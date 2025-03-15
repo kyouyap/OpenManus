@@ -1,13 +1,12 @@
 import threading
 import tomllib
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
 def get_project_root() -> Path:
-    """Get the project root directory"""
+    """プロジェクトのルートディレクトリを取得します"""
     return Path(__file__).resolve().parent.parent
 
 
@@ -16,59 +15,55 @@ WORKSPACE_ROOT = PROJECT_ROOT / "workspace"
 
 
 class LLMSettings(BaseModel):
-    model: str = Field(..., description="Model name")
-    base_url: str = Field(..., description="API base URL")
-    api_key: str = Field(..., description="API key")
-    max_tokens: int = Field(4096, description="Maximum number of tokens per request")
-    max_input_tokens: Optional[int] = Field(
+    model: str = Field(..., description="モデル名")
+    base_url: str = Field(..., description="APIのベースURL")
+    api_key: str = Field(..., description="APIキー")
+    max_tokens: int = Field(4096, description="リクエストごとの最大トークン数")
+    max_input_tokens: int | None = Field(
         None,
-        description="Maximum input tokens to use across all requests (None for unlimited)",
+        description="全リクエストで使用する最大入力トークン数（無制限の場合はNone）",
     )
-    temperature: float = Field(1.0, description="Sampling temperature")
-    api_type: str = Field(..., description="AzureOpenai or Openai")
-    api_version: str = Field(..., description="Azure Openai version if AzureOpenai")
+    temperature: float = Field(1.0, description="サンプリング温度")
+    api_type: str = Field(..., description="AzureOpenaiまたはOpenai")
+    api_version: str = Field(..., description="AzureOpenaiの場合のAPIバージョン")
 
 
 class ProxySettings(BaseModel):
-    server: str = Field(None, description="Proxy server address")
-    username: Optional[str] = Field(None, description="Proxy username")
-    password: Optional[str] = Field(None, description="Proxy password")
+    server: str = Field(None, description="プロキシサーバーのアドレス")
+    username: str | None = Field(None, description="プロキシのユーザー名")
+    password: str | None = Field(None, description="プロキシのパスワード")
 
 
 class SearchSettings(BaseModel):
-    engine: str = Field(default="Google", description="Search engine the llm to use")
+    engine: str = Field(default="Google", description="LLMが使用する検索エンジン")
 
 
 class BrowserSettings(BaseModel):
-    headless: bool = Field(False, description="Whether to run browser in headless mode")
+    headless: bool = Field(
+        False, description="ブラウザをヘッドレスモードで実行するかどうか"
+    )
     disable_security: bool = Field(
-        True, description="Disable browser security features"
+        True, description="ブラウザのセキュリティ機能を無効化する"
     )
-    extra_chromium_args: List[str] = Field(
-        default_factory=list, description="Extra arguments to pass to the browser"
+    extra_chromium_args: list[str] = Field(
+        default_factory=list, description="ブラウザに渡す追加の引数"
     )
-    chrome_instance_path: Optional[str] = Field(
-        None, description="Path to a Chrome instance to use"
+    chrome_instance_path: str | None = Field(
+        None, description="使用するChromeインスタンスのパス"
     )
-    wss_url: Optional[str] = Field(
-        None, description="Connect to a browser instance via WebSocket"
+    wss_url: str | None = Field(
+        None, description="WebSocketを介してブラウザインスタンスに接続"
     )
-    cdp_url: Optional[str] = Field(
-        None, description="Connect to a browser instance via CDP"
+    cdp_url: str | None = Field(
+        None, description="CDPを介してブラウザインスタンスに接続"
     )
-    proxy: Optional[ProxySettings] = Field(
-        None, description="Proxy settings for the browser"
-    )
+    proxy: ProxySettings | None = Field(None, description="ブラウザのプロキシ設定")
 
 
 class AppConfig(BaseModel):
-    llm: Dict[str, LLMSettings]
-    browser_config: Optional[BrowserSettings] = Field(
-        None, description="Browser configuration"
-    )
-    search_config: Optional[SearchSettings] = Field(
-        None, description="Search configuration"
-    )
+    llm: dict[str, LLMSettings]
+    browser_config: BrowserSettings | None = Field(None, description="ブラウザの設定")
+    search_config: SearchSettings | None = Field(None, description="検索の設定")
 
     class Config:
         arbitrary_types_allowed = True
@@ -103,7 +98,7 @@ class Config:
         example_path = root / "config" / "config.example.toml"
         if example_path.exists():
             return example_path
-        raise FileNotFoundError("No configuration file found in config directory")
+        raise FileNotFoundError("設定ディレクトリに設定ファイルが見つかりません")
 
     def _load_config(self) -> dict:
         config_path = self._get_config_path()
@@ -128,12 +123,12 @@ class Config:
             "api_version": base_llm.get("api_version", ""),
         }
 
-        # handle browser config.
+        # ブラウザ設定の処理
         browser_config = raw_config.get("browser", {})
         browser_settings = None
 
         if browser_config:
-            # handle proxy settings.
+            # プロキシ設定の処理
             proxy_config = browser_config.get("proxy", {})
             proxy_settings = None
 
@@ -146,18 +141,18 @@ class Config:
                     }
                 )
 
-            # filter valid browser config parameters.
+            # 有効なブラウザ設定パラメータをフィルタリング
             valid_browser_params = {
                 k: v
                 for k, v in browser_config.items()
                 if k in BrowserSettings.__annotations__ and v is not None
             }
 
-            # if there is proxy settings, add it to the parameters.
+            # プロキシ設定がある場合、パラメータに追加
             if proxy_settings:
                 valid_browser_params["proxy"] = proxy_settings
 
-            # only create BrowserSettings when there are valid parameters.
+            # 有効なパラメータがある場合のみBrowserSettingsを作成
             if valid_browser_params:
                 browser_settings = BrowserSettings(**valid_browser_params)
 
@@ -181,15 +176,15 @@ class Config:
         self._config = AppConfig(**config_dict)
 
     @property
-    def llm(self) -> Dict[str, LLMSettings]:
+    def llm(self) -> dict[str, LLMSettings]:
         return self._config.llm
 
     @property
-    def browser_config(self) -> Optional[BrowserSettings]:
+    def browser_config(self) -> BrowserSettings | None:
         return self._config.browser_config
 
     @property
-    def search_config(self) -> Optional[SearchSettings]:
+    def search_config(self) -> SearchSettings | None:
         return self._config.search_config
 
 

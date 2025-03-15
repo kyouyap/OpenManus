@@ -1,20 +1,18 @@
 import asyncio
 import os
-from typing import Optional
 
 from app.exceptions import ToolError
 from app.tool.base import BaseTool, CLIResult, ToolResult
 
-
-_BASH_DESCRIPTION = """Execute a bash command in the terminal.
-* Long running commands: For commands that may run indefinitely, it should be run in the background and the output should be redirected to a file, e.g. command = `python3 app.py > server.log 2>&1 &`.
-* Interactive: If a bash command returns exit code `-1`, this means the process is not yet finished. The assistant must then send a second call to terminal with an empty `command` (which will retrieve any additional logs), or it can send additional text (set `command` to the text) to STDIN of the running process, or it can send command=`ctrl+c` to interrupt the process.
-* Timeout: If a command execution result says "Command timed out. Sending SIGINT to the process", the assistant should retry running the command in the background.
+_BASH_DESCRIPTION = """ターミナルでbashコマンドを実行します。
+* 長時間実行コマンド: 無期限に実行される可能性のあるコマンドは、バックグラウンドで実行し、出力をファイルにリダイレクトする必要があります。例: command = `python3 app.py > server.log 2>&1 &`
+* 対話型コマンド: bashコマンドが終了コード`-1`を返した場合、プロセスはまだ終了していないことを意味します。アシスタントは空の`command`でターミナルに2回目の呼び出しを送信して追加のログを取得するか、テキストを送信（`command`にテキストを設定）してSTDINに送信するか、command=`ctrl+c`を送信してプロセスを中断できます。
+* タイムアウト: コマンド実行結果が"Command timed out. Sending SIGINT to the process"となった場合、アシスタントはコマンドをバックグラウンドで再実行する必要があります。
 """
 
 
 class _BashSession:
-    """A session of a bash shell."""
+    """bashシェルのセッション。"""
 
     _started: bool
     _process: asyncio.subprocess.Process
@@ -45,7 +43,7 @@ class _BashSession:
         self._started = True
 
     def stop(self):
-        """Terminate the bash shell."""
+        """bashシェルを終了します。"""
         if not self._started:
             raise ToolError("Session has not started.")
         if self._process.returncode is not None:
@@ -53,7 +51,7 @@ class _BashSession:
         self._process.terminate()
 
     async def run(self, command: str):
-        """Execute a command in the bash shell."""
+        """bashシェルでコマンドを実行します。"""
         if not self._started:
             raise ToolError("Session has not started.")
         if self._process.returncode is not None:
@@ -84,27 +82,21 @@ class _BashSession:
                     await asyncio.sleep(self._output_delay)
                     # if we read directly from stdout/stderr, it will wait forever for
                     # EOF. use the StreamReader buffer directly instead.
-                    output = (
-                        self._process.stdout._buffer.decode()
-                    )  # pyright: ignore[reportAttributeAccessIssue]
+                    output = self._process.stdout._buffer.decode()  # pyright: ignore[reportAttributeAccessIssue]
                     if self._sentinel in output:
                         # strip the sentinel and break
                         output = output[: output.index(self._sentinel)]
                         break
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._timed_out = True
             raise ToolError(
                 f"timed out: bash has not returned in {self._timeout} seconds and must be restarted",
             ) from None
 
-        if output.endswith("\n"):
-            output = output[:-1]
+        output = output.removesuffix("\n")
 
-        error = (
-            self._process.stderr._buffer.decode()
-        )  # pyright: ignore[reportAttributeAccessIssue]
-        if error.endswith("\n"):
-            error = error[:-1]
+        error = self._process.stderr._buffer.decode()  # pyright: ignore[reportAttributeAccessIssue]
+        error = error.removesuffix("\n")
 
         # clear the buffers so that the next output can be read correctly
         self._process.stdout._buffer.clear()  # pyright: ignore[reportAttributeAccessIssue]
@@ -114,7 +106,7 @@ class _BashSession:
 
 
 class Bash(BaseTool):
-    """A tool for executing bash commands"""
+    """bashコマンドを実行するためのツール"""
 
     name: str = "bash"
     description: str = _BASH_DESCRIPTION
@@ -123,13 +115,13 @@ class Bash(BaseTool):
         "properties": {
             "command": {
                 "type": "string",
-                "description": "The bash command to execute. Can be empty to view additional logs when previous exit code is `-1`. Can be `ctrl+c` to interrupt the currently running process.",
+                "description": "実行するbashコマンド。前回の終了コードが`-1`の場合は空にして追加のログを表示できます。実行中のプロセスを中断するには`ctrl+c`を使用できます。",
             },
         },
         "required": ["command"],
     }
 
-    _session: Optional[_BashSession] = None
+    _session: _BashSession | None = None
 
     async def execute(
         self, command: str | None = None, restart: bool = False, **kwargs

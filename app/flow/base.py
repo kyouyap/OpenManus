@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -12,19 +11,19 @@ class FlowType(str, Enum):
 
 
 class BaseFlow(BaseModel, ABC):
-    """Base class for execution flows supporting multiple agents"""
+    """複数のエージェントをサポートする実行フローの基本クラス"""
 
-    agents: Dict[str, BaseAgent]
-    tools: Optional[List] = None
-    primary_agent_key: Optional[str] = None
+    agents: dict[str, BaseAgent]
+    tools: list | None = None
+    primary_agent_key: str | None = None
 
     class Config:
         arbitrary_types_allowed = True
 
     def __init__(
-        self, agents: Union[BaseAgent, List[BaseAgent], Dict[str, BaseAgent]], **data
+        self, agents: BaseAgent | list[BaseAgent] | dict[str, BaseAgent], **data
     ):
-        # Handle different ways of providing agents
+        # エージェントの提供方法に応じた処理
         if isinstance(agents, BaseAgent):
             agents_dict = {"default": agents}
         elif isinstance(agents, list):
@@ -32,38 +31,38 @@ class BaseFlow(BaseModel, ABC):
         else:
             agents_dict = agents
 
-        # If primary agent not specified, use first agent
+        # プライマリエージェントが指定されていない場合、最初のエージェントを使用
         primary_key = data.get("primary_agent_key")
         if not primary_key and agents_dict:
             primary_key = next(iter(agents_dict))
             data["primary_agent_key"] = primary_key
 
-        # Set the agents dictionary
+        # エージェント辞書を設定
         data["agents"] = agents_dict
 
-        # Initialize using BaseModel's init
+        # BaseModelの初期化を使用
         super().__init__(**data)
 
     @property
-    def primary_agent(self) -> Optional[BaseAgent]:
-        """Get the primary agent for the flow"""
+    def primary_agent(self) -> BaseAgent | None:
+        """フローのプライマリエージェントを取得します"""
         return self.agents.get(self.primary_agent_key)
 
-    def get_agent(self, key: str) -> Optional[BaseAgent]:
-        """Get a specific agent by key"""
+    def get_agent(self, key: str) -> BaseAgent | None:
+        """キーを指定して特定のエージェントを取得します"""
         return self.agents.get(key)
 
     def add_agent(self, key: str, agent: BaseAgent) -> None:
-        """Add a new agent to the flow"""
+        """フローに新しいエージェントを追加します"""
         self.agents[key] = agent
 
     @abstractmethod
     async def execute(self, input_text: str) -> str:
-        """Execute the flow with given input"""
+        """与えられた入力でフローを実行します"""
 
 
 class PlanStepStatus(str, Enum):
-    """Enum class defining possible statuses of a plan step"""
+    """計画ステップの可能な状態を定義する列挙クラス"""
 
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
@@ -72,17 +71,17 @@ class PlanStepStatus(str, Enum):
 
     @classmethod
     def get_all_statuses(cls) -> list[str]:
-        """Return a list of all possible step status values"""
+        """全ての可能なステップ状態値のリストを返します"""
         return [status.value for status in cls]
 
     @classmethod
     def get_active_statuses(cls) -> list[str]:
-        """Return a list of values representing active statuses (not started or in progress)"""
+        """アクティブな状態（未開始または進行中）を表す値のリストを返します"""
         return [cls.NOT_STARTED.value, cls.IN_PROGRESS.value]
 
     @classmethod
-    def get_status_marks(cls) -> Dict[str, str]:
-        """Return a mapping of statuses to their marker symbols"""
+    def get_status_marks(cls) -> dict[str, str]:
+        """状態とそのマーカーシンボルのマッピングを返します"""
         return {
             cls.COMPLETED.value: "[✓]",
             cls.IN_PROGRESS.value: "[→]",

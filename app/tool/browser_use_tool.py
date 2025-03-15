@@ -1,6 +1,5 @@
 import asyncio
 import json
-from typing import Optional
 
 from browser_use import Browser as BrowserUseBrowser
 from browser_use import BrowserConfig
@@ -12,25 +11,24 @@ from pydantic_core.core_schema import ValidationInfo
 from app.config import config
 from app.tool.base import BaseTool, ToolResult
 
-
 MAX_LENGTH = 2000
 
 _BROWSER_DESCRIPTION = """
-Interact with a web browser to perform various actions such as navigation, element interaction,
-content extraction, and tab management. Supported actions include:
-- 'navigate': Go to a specific URL
-- 'click': Click an element by index
-- 'input_text': Input text into an element
-- 'screenshot': Capture a screenshot
-- 'get_html': Get page HTML content
-- 'get_text': Get text content of the page
-- 'read_links': Get all links on the page
-- 'execute_js': Execute JavaScript code
-- 'scroll': Scroll the page
-- 'switch_tab': Switch to a specific tab
-- 'new_tab': Open a new tab
-- 'close_tab': Close the current tab
-- 'refresh': Refresh the current page
+ブラウザを操作して、ナビゲーション、要素の操作、コンテンツの抽出、タブ管理などの様々なアクションを実行します。
+サポートされているアクション:
+- 'navigate': 指定したURLに移動
+- 'click': インデックス指定で要素をクリック
+- 'input_text': 要素にテキストを入力
+- 'screenshot': スクリーンショットを撮影
+- 'get_html': ページのHTML内容を取得
+- 'get_text': ページのテキスト内容を取得
+- 'read_links': ページ内のすべてのリンクを取得
+- 'execute_js': JavaScriptコードを実行
+- 'scroll': ページをスクロール
+- 'switch_tab': 指定したタブに切り替え
+- 'new_tab': 新しいタブを開く
+- 'close_tab': 現在のタブを閉じる
+- 'refresh': 現在のページを更新
 """
 
 
@@ -56,28 +54,31 @@ class BrowserUseTool(BaseTool):
                     "close_tab",
                     "refresh",
                 ],
-                "description": "The browser action to perform",
+                "description": "実行するブラウザアクション",
             },
             "url": {
                 "type": "string",
-                "description": "URL for 'navigate' or 'new_tab' actions",
+                "description": "'navigate'または'new_tab'アクション用のURL",
             },
             "index": {
                 "type": "integer",
-                "description": "Element index for 'click' or 'input_text' actions",
+                "description": "'click'または'input_text'アクション用の要素インデックス",
             },
-            "text": {"type": "string", "description": "Text for 'input_text' action"},
+            "text": {
+                "type": "string",
+                "description": "'input_text'アクション用のテキスト",
+            },
             "script": {
                 "type": "string",
-                "description": "JavaScript code for 'execute_js' action",
+                "description": "'execute_js'アクション用のJavaScriptコード",
             },
             "scroll_amount": {
                 "type": "integer",
-                "description": "Pixels to scroll (positive for down, negative for up) for 'scroll' action",
+                "description": "'scroll'アクション用のスクロールピクセル数（正の値で下、負の値で上）",
             },
             "tab_id": {
                 "type": "integer",
-                "description": "Tab ID for 'switch_tab' action",
+                "description": "'switch_tab'アクション用のタブID",
             },
         },
         "required": ["action"],
@@ -93,9 +94,9 @@ class BrowserUseTool(BaseTool):
     }
 
     lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
-    browser: Optional[BrowserUseBrowser] = Field(default=None, exclude=True)
-    context: Optional[BrowserContext] = Field(default=None, exclude=True)
-    dom_service: Optional[DomService] = Field(default=None, exclude=True)
+    browser: BrowserUseBrowser | None = Field(default=None, exclude=True)
+    context: BrowserContext | None = Field(default=None, exclude=True)
+    dom_service: DomService | None = Field(default=None, exclude=True)
 
     @field_validator("parameters", mode="before")
     def validate_parameters(cls, v: dict, info: ValidationInfo) -> dict:
@@ -104,7 +105,7 @@ class BrowserUseTool(BaseTool):
         return v
 
     async def _ensure_browser_initialized(self) -> BrowserContext:
-        """Ensure browser and context are initialized."""
+        """ブラウザとコンテキストが初期化されていることを確認します。"""
         if self.browser is None:
             browser_config_kwargs = {"headless": False, "disable_security": True}
 
@@ -155,29 +156,28 @@ class BrowserUseTool(BaseTool):
     async def execute(
         self,
         action: str,
-        url: Optional[str] = None,
-        index: Optional[int] = None,
-        text: Optional[str] = None,
-        script: Optional[str] = None,
-        scroll_amount: Optional[int] = None,
-        tab_id: Optional[int] = None,
+        url: str | None = None,
+        index: int | None = None,
+        text: str | None = None,
+        script: str | None = None,
+        scroll_amount: int | None = None,
+        tab_id: int | None = None,
         **kwargs,
     ) -> ToolResult:
-        """
-        Execute a specified browser action.
+        """指定されたブラウザアクションを実行します。
 
-        Args:
-            action: The browser action to perform
-            url: URL for navigation or new tab
-            index: Element index for click or input actions
-            text: Text for input action
-            script: JavaScript code for execution
-            scroll_amount: Pixels to scroll for scroll action
-            tab_id: Tab ID for switch_tab action
-            **kwargs: Additional arguments
+        引数:
+            action: 実行するブラウザアクション
+            url: ナビゲーションまたは新規タブ用のURL
+            index: クリックまたは入力アクション用の要素インデックス
+            text: 入力アクション用のテキスト
+            script: 実行するJavaScriptコード
+            scroll_amount: スクロールアクション用のピクセル数
+            tab_id: switch_tabアクション用のタブID
+            **kwargs: 追加の引数
 
-        Returns:
-            ToolResult with the action's output or error
+        戻り値:
+            アクションの出力またはエラーを含むToolResult
         """
         async with self.lock:
             try:
@@ -189,7 +189,7 @@ class BrowserUseTool(BaseTool):
                     await context.navigate_to(url)
                     return ToolResult(output=f"Navigated to {url}")
 
-                elif action == "click":
+                if action == "click":
                     if index is None:
                         return ToolResult(error="Index is required for 'click' action")
                     element = await context.get_dom_element_by_index(index)
@@ -201,7 +201,7 @@ class BrowserUseTool(BaseTool):
                         output += f" - Downloaded file to {download_path}"
                     return ToolResult(output=output)
 
-                elif action == "input_text":
+                if action == "input_text":
                     if index is None or not text:
                         return ToolResult(
                             error="Index and text are required for 'input_text' action"
@@ -214,31 +214,31 @@ class BrowserUseTool(BaseTool):
                         output=f"Input '{text}' into element at index {index}"
                     )
 
-                elif action == "screenshot":
+                if action == "screenshot":
                     screenshot = await context.take_screenshot(full_page=True)
                     return ToolResult(
                         output=f"Screenshot captured (base64 length: {len(screenshot)})",
                         system=screenshot,
                     )
 
-                elif action == "get_html":
+                if action == "get_html":
                     html = await context.get_page_html()
                     truncated = (
                         html[:MAX_LENGTH] + "..." if len(html) > MAX_LENGTH else html
                     )
                     return ToolResult(output=truncated)
 
-                elif action == "get_text":
+                if action == "get_text":
                     text = await context.execute_javascript("document.body.innerText")
                     return ToolResult(output=text)
 
-                elif action == "read_links":
+                if action == "read_links":
                     links = await context.execute_javascript(
                         "document.querySelectorAll('a[href]').forEach((elem) => {if (elem.innerText) {console.log(elem.innerText, elem.href)}})"
                     )
                     return ToolResult(output=links)
 
-                elif action == "execute_js":
+                if action == "execute_js":
                     if not script:
                         return ToolResult(
                             error="Script is required for 'execute_js' action"
@@ -246,7 +246,7 @@ class BrowserUseTool(BaseTool):
                     result = await context.execute_javascript(script)
                     return ToolResult(output=str(result))
 
-                elif action == "scroll":
+                if action == "scroll":
                     if scroll_amount is None:
                         return ToolResult(
                             error="Scroll amount is required for 'scroll' action"
@@ -259,7 +259,7 @@ class BrowserUseTool(BaseTool):
                         output=f"Scrolled {direction} by {abs(scroll_amount)} pixels"
                     )
 
-                elif action == "switch_tab":
+                if action == "switch_tab":
                     if tab_id is None:
                         return ToolResult(
                             error="Tab ID is required for 'switch_tab' action"
@@ -267,28 +267,27 @@ class BrowserUseTool(BaseTool):
                     await context.switch_to_tab(tab_id)
                     return ToolResult(output=f"Switched to tab {tab_id}")
 
-                elif action == "new_tab":
+                if action == "new_tab":
                     if not url:
                         return ToolResult(error="URL is required for 'new_tab' action")
                     await context.create_new_tab(url)
                     return ToolResult(output=f"Opened new tab with URL {url}")
 
-                elif action == "close_tab":
+                if action == "close_tab":
                     await context.close_current_tab()
                     return ToolResult(output="Closed current tab")
 
-                elif action == "refresh":
+                if action == "refresh":
                     await context.refresh_page()
                     return ToolResult(output="Refreshed current page")
 
-                else:
-                    return ToolResult(error=f"Unknown action: {action}")
+                return ToolResult(error=f"Unknown action: {action}")
 
             except Exception as e:
-                return ToolResult(error=f"Browser action '{action}' failed: {str(e)}")
+                return ToolResult(error=f"Browser action '{action}' failed: {e!s}")
 
     async def get_current_state(self) -> ToolResult:
-        """Get the current browser state as a ToolResult."""
+        """現在のブラウザの状態をToolResultとして取得します。"""
         async with self.lock:
             try:
                 context = await self._ensure_browser_initialized()
@@ -301,10 +300,10 @@ class BrowserUseTool(BaseTool):
                 }
                 return ToolResult(output=json.dumps(state_info))
             except Exception as e:
-                return ToolResult(error=f"Failed to get browser state: {str(e)}")
+                return ToolResult(error=f"Failed to get browser state: {e!s}")
 
     async def cleanup(self):
-        """Clean up browser resources."""
+        """ブラウザリソースをクリーンアップします。"""
         async with self.lock:
             if self.context is not None:
                 await self.context.close()
@@ -315,7 +314,7 @@ class BrowserUseTool(BaseTool):
                 self.browser = None
 
     def __del__(self):
-        """Ensure cleanup when object is destroyed."""
+        """オブジェクトが破棄される時にクリーンアップを確実に実行します。"""
         if self.browser is not None or self.context is not None:
             try:
                 asyncio.run(self.cleanup())

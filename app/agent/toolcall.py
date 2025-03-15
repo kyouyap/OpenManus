@@ -1,5 +1,5 @@
 import json
-from typing import Any, List, Optional, Union
+from typing import Any
 
 from pydantic import Field
 
@@ -10,15 +10,14 @@ from app.prompt.toolcall import NEXT_STEP_PROMPT, SYSTEM_PROMPT
 from app.schema import TOOL_CHOICE_TYPE, AgentState, Message, ToolCall, ToolChoice
 from app.tool import CreateChatCompletion, Terminate, ToolCollection
 
-
-TOOL_CALL_REQUIRED = "Tool calls required but none provided"
+TOOL_CALL_REQUIRED = "ツール呼び出しが必要ですが、提供されていません"
 
 
 class ToolCallAgent(ReActAgent):
-    """Base agent class for handling tool/function calls with enhanced abstraction"""
+    """ツール/関数呼び出しを強化された抽象化で処理するための基本エージェントクラス"""
 
     name: str = "toolcall"
-    description: str = "an agent that can execute tool calls."
+    description: str = "ツール呼び出しを実行できるエージェント。"
 
     system_prompt: str = SYSTEM_PROMPT
     next_step_prompt: str = NEXT_STEP_PROMPT
@@ -27,21 +26,21 @@ class ToolCallAgent(ReActAgent):
         CreateChatCompletion(), Terminate()
     )
     tool_choices: TOOL_CHOICE_TYPE = ToolChoice.AUTO  # type: ignore
-    special_tool_names: List[str] = Field(default_factory=lambda: [Terminate().name])
+    special_tool_names: list[str] = Field(default_factory=lambda: [Terminate().name])
 
-    tool_calls: List[ToolCall] = Field(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
     max_steps: int = 30
-    max_observe: Optional[Union[int, bool]] = None
+    max_observe: int | bool | None = None
 
     async def think(self) -> bool:
-        """Process current state and decide next actions using tools"""
+        """現在の状態を処理し、ツールを使用して次のアクションを決定します"""
         if self.next_step_prompt:
             user_msg = Message.user_message(self.next_step_prompt)
             self.messages += [user_msg]
 
         try:
-            # Get response with tool options
+            # ツールオプション付きのレスポンスを取得
             response = await self.llm.ask_tool(
                 messages=self.messages,
                 system_msgs=[Message.system_message(self.system_prompt)]
@@ -53,15 +52,15 @@ class ToolCallAgent(ReActAgent):
         except ValueError:
             raise
         except Exception as e:
-            # Check if this is a RetryError containing TokenLimitExceeded
+            # RetryErrorにTokenLimitExceededが含まれているかチェック
             if hasattr(e, "__cause__") and isinstance(e.__cause__, TokenLimitExceeded):
                 token_limit_error = e.__cause__
                 logger.error(
-                    f"🚨 Token limit error (from RetryError): {token_limit_error}"
+                    f"🚨 トークン制限エラー (RetryErrorより): {token_limit_error}"
                 )
                 self.memory.add_message(
                     Message.assistant_message(
-                        f"Maximum token limit reached, cannot continue execution: {str(token_limit_error)}"
+                        f"最大トークン制限に達したため、実行を継続できません: {token_limit_error!s}"
                     )
                 )
                 self.state = AgentState.FINISHED
@@ -70,29 +69,29 @@ class ToolCallAgent(ReActAgent):
 
         self.tool_calls = response.tool_calls
 
-        # Log response info
-        logger.info(f"✨ {self.name}'s thoughts: {response.content}")
+        # レスポンス情報をログに記録
+        logger.info(f"✨ {self.name}の思考: {response.content}")
         logger.info(
-            f"🛠️ {self.name} selected {len(response.tool_calls) if response.tool_calls else 0} tools to use"
+            f"🛠️ {self.name}は{len(response.tool_calls) if response.tool_calls else 0}個のツールを使用することを選択しました"
         )
         if response.tool_calls:
             logger.info(
-                f"🧰 Tools being prepared: {[call.function.name for call in response.tool_calls]}"
+                f"🧰 準備中のツール: {[call.function.name for call in response.tool_calls]}"
             )
 
         try:
-            # Handle different tool_choices modes
+            # 異なるtool_choicesモードを処理
             if self.tool_choices == ToolChoice.NONE:
                 if response.tool_calls:
                     logger.warning(
-                        f"🤔 Hmm, {self.name} tried to use tools when they weren't available!"
+                        f"🤔 {self.name}は利用できないツールを使おうとしました！"
                     )
                 if response.content:
                     self.memory.add_message(Message.assistant_message(response.content))
                     return True
                 return False
 
-            # Create and add assistant message
+            # アシスタントメッセージを作成して追加
             assistant_msg = (
                 Message.from_tool_calls(
                     content=response.content, tool_calls=self.tool_calls
@@ -103,30 +102,31 @@ class ToolCallAgent(ReActAgent):
             self.memory.add_message(assistant_msg)
 
             if self.tool_choices == ToolChoice.REQUIRED and not self.tool_calls:
-                return True  # Will be handled in act()
+                return True  # act()で処理される
 
-            # For 'auto' mode, continue with content if no commands but content exists
+            # 'auto'モードの場合、コマンドがなくてもコンテンツがあれば続行
             if self.tool_choices == ToolChoice.AUTO and not self.tool_calls:
                 return bool(response.content)
 
             return bool(self.tool_calls)
         except Exception as e:
-            logger.error(f"🚨 Oops! The {self.name}'s thinking process hit a snag: {e}")
+            logger.error(f"🚨 {self.name}の思考プロセスでエラーが発生しました: {e}")
             self.memory.add_message(
-                Message.assistant_message(
-                    f"Error encountered while processing: {str(e)}"
-                )
+                Message.assistant_message(f"処理中にエラーが発生しました: {e!s}")
             )
             return False
 
     async def act(self) -> str:
-        """Execute tool calls and handle their results"""
+        """ツール呼び出しを実行し、その結果を処理します"""
         if not self.tool_calls:
             if self.tool_choices == ToolChoice.REQUIRED:
                 raise ValueError(TOOL_CALL_REQUIRED)
 
-            # Return last message content if no tool calls
-            return self.messages[-1].content or "No content or commands to execute"
+            # ツール呼び出しがない場合は最後のメッセージ内容を返す
+            return (
+                self.messages[-1].content
+                or "実行するコンテンツまたはコマンドがありません"
+            )
 
         results = []
         for command in self.tool_calls:
@@ -136,10 +136,10 @@ class ToolCallAgent(ReActAgent):
                 result = result[: self.max_observe]
 
             logger.info(
-                f"🎯 Tool '{command.function.name}' completed its mission! Result: {result}"
+                f"🎯 ツール '{command.function.name}' が完了しました！ 結果: {result}"
             )
 
-            # Add tool response to memory
+            # ツールのレスポンスをメモリに追加
             tool_msg = Message.tool_message(
                 content=result, tool_call_id=command.id, name=command.function.name
             )
@@ -149,59 +149,59 @@ class ToolCallAgent(ReActAgent):
         return "\n\n".join(results)
 
     async def execute_tool(self, command: ToolCall) -> str:
-        """Execute a single tool call with robust error handling"""
+        """堅牢なエラー処理を備えた単一のツール呼び出しを実行します"""
         if not command or not command.function or not command.function.name:
-            return "Error: Invalid command format"
+            return "エラー: 無効なコマンド形式"
 
         name = command.function.name
         if name not in self.available_tools.tool_map:
-            return f"Error: Unknown tool '{name}'"
+            return f"エラー: 不明なツール '{name}'"
 
         try:
-            # Parse arguments
+            # 引数をパース
             args = json.loads(command.function.arguments or "{}")
 
-            # Execute the tool
-            logger.info(f"🔧 Activating tool: '{name}'...")
+            # ツールを実行
+            logger.info(f"🔧 ツールを起動中: '{name}'...")
             result = await self.available_tools.execute(name=name, tool_input=args)
 
-            # Format result for display
+            # 表示用に結果をフォーマット
             observation = (
-                f"Observed output of cmd `{name}` executed:\n{str(result)}"
+                f"コマンド `{name}` の実行結果:\n{result!s}"
                 if result
-                else f"Cmd `{name}` completed with no output"
+                else f"コマンド `{name}` は出力なしで完了しました"
             )
 
-            # Handle special tools like `finish`
+            # `finish`などの特殊ツールを処理
             await self._handle_special_tool(name=name, result=result)
 
             return observation
         except json.JSONDecodeError:
-            error_msg = f"Error parsing arguments for {name}: Invalid JSON format"
+            error_msg = f"{name}の引数のパースエラー: 無効なJSON形式"
             logger.error(
-                f"📝 Oops! The arguments for '{name}' don't make sense - invalid JSON, arguments:{command.function.arguments}"
+                f"📝 '{name}'の引数が不正です - 無効なJSON、引数:{command.function.arguments}"
             )
-            return f"Error: {error_msg}"
+            return f"エラー: {error_msg}"
         except Exception as e:
-            error_msg = f"⚠️ Tool '{name}' encountered a problem: {str(e)}"
+            error_msg = f"⚠️ ツール '{name}' でエラーが発生しました: {e!s}"
             logger.error(error_msg)
-            return f"Error: {error_msg}"
+            return f"エラー: {error_msg}"
 
     async def _handle_special_tool(self, name: str, result: Any, **kwargs):
-        """Handle special tool execution and state changes"""
+        """特殊ツールの実行と状態変更を処理します"""
         if not self._is_special_tool(name):
             return
 
         if self._should_finish_execution(name=name, result=result, **kwargs):
-            # Set agent state to finished
-            logger.info(f"🏁 Special tool '{name}' has completed the task!")
+            # エージェントの状態を完了に設定
+            logger.info(f"🏁 特殊ツール '{name}' がタスクを完了しました！")
             self.state = AgentState.FINISHED
 
     @staticmethod
     def _should_finish_execution(**kwargs) -> bool:
-        """Determine if tool execution should finish the agent"""
+        """ツールの実行によってエージェントを終了すべきかを判断します"""
         return True
 
     def _is_special_tool(self, name: str) -> bool:
-        """Check if tool name is in special tools list"""
+        """ツール名が特殊ツールリストに含まれているかをチェックします"""
         return name.lower() in [n.lower() for n in self.special_tool_names]

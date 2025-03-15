@@ -7,7 +7,6 @@ from app.tool import BaseTool
 from app.tool.base import CLIResult, ToolResult
 from app.tool.run import run
 
-
 Command = Literal[
     "view",
     "create",
@@ -19,24 +18,24 @@ SNIPPET_LINES: int = 4
 
 MAX_RESPONSE_LEN: int = 16000
 
-TRUNCATED_MESSAGE: str = "<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>"
+TRUNCATED_MESSAGE: str = "<応答が切り取られました><注意>コンテキストを節約するため、このファイルの一部のみが表示されています。`grep -n`でファイル内を検索して探している行番号を見つけてから、このツールを再試行してください。</注意>"
 
-_STR_REPLACE_EDITOR_DESCRIPTION = """Custom editing tool for viewing, creating and editing files
-* State is persistent across command calls and discussions with the user
-* If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep
-* The `create` command cannot be used if the specified `path` already exists as a file
-* If a `command` generates a long output, it will be truncated and marked with `<response clipped>`
-* The `undo_edit` command will revert the last edit made to the file at `path`
+_STR_REPLACE_EDITOR_DESCRIPTION = """ファイルの表示、作成、編集用のカスタムツール
+* 状態はコマンド呼び出しやユーザーとの対話を通じて保持されます
+* `path`がファイルの場合、`view`は`cat -n`の結果を表示します。ディレクトリの場合、`view`は2階層までの非隠しファイルとディレクトリを一覧表示します
+* 指定された`path`にファイルが既に存在する場合、`create`コマンドは使用できません
+* `command`が長い出力を生成する場合、切り詰められて`<応答が切り取られました>`とマークされます
+* `undo_edit`コマンドは`path`のファイルに対する最後の編集を元に戻します
 
-Notes for using the `str_replace` command:
-* The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
-* If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique
-* The `new_str` parameter should contain the edited lines that should replace the `old_str`
+`str_replace`コマンドの使用上の注意:
+* `old_str`パラメータは元のファイルの1行以上の連続した行と完全に一致する必要があります。空白文字に注意してください！
+* `old_str`パラメータがファイル内で一意でない場合、置換は実行されません。`old_str`に十分なコンテキストを含めて一意にしてください
+* `new_str`パラメータには、`old_str`を置き換える編集後の行を含める必要があります
 """
 
 
 def maybe_truncate(content: str, truncate_after: int | None = MAX_RESPONSE_LEN):
-    """Truncate content and append a notice if content exceeds the specified length."""
+    """コンテンツが指定された長さを超える場合、切り詰めて通知を付加します。"""
     return (
         content
         if not truncate_after or len(content) <= truncate_after
@@ -45,7 +44,7 @@ def maybe_truncate(content: str, truncate_after: int | None = MAX_RESPONSE_LEN):
 
 
 class StrReplaceEditor(BaseTool):
-    """A tool for executing bash commands"""
+    """bashコマンドを実行するためのツール"""
 
     name: str = "str_replace_editor"
     description: str = _STR_REPLACE_EDITOR_DESCRIPTION
@@ -53,32 +52,32 @@ class StrReplaceEditor(BaseTool):
         "type": "object",
         "properties": {
             "command": {
-                "description": "The commands to run. Allowed options are: `view`, `create`, `str_replace`, `insert`, `undo_edit`.",
+                "description": "実行するコマンド。使用可能なオプション: `view`（表示）, `create`（作成）, `str_replace`（文字列置換）, `insert`（挿入）, `undo_edit`（編集取り消し）",
                 "enum": ["view", "create", "str_replace", "insert", "undo_edit"],
                 "type": "string",
             },
             "path": {
-                "description": "Absolute path to file or directory.",
+                "description": "ファイルまたはディレクトリの絶対パス。",
                 "type": "string",
             },
             "file_text": {
-                "description": "Required parameter of `create` command, with the content of the file to be created.",
+                "description": "`create`コマンドの必須パラメータ。作成するファイルの内容を指定します。",
                 "type": "string",
             },
             "old_str": {
-                "description": "Required parameter of `str_replace` command containing the string in `path` to replace.",
+                "description": "`str_replace`コマンドの必須パラメータ。置換対象の文字列を指定します。",
                 "type": "string",
             },
             "new_str": {
-                "description": "Optional parameter of `str_replace` command containing the new string (if not given, no string will be added). Required parameter of `insert` command containing the string to insert.",
+                "description": "`str_replace`コマンドのオプションパラメータ。新しい文字列を指定します（指定がない場合、文字列は追加されません）。`insert`コマンドでは挿入する文字列を指定する必須パラメータになります。",
                 "type": "string",
             },
             "insert_line": {
-                "description": "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`.",
+                "description": "`insert`コマンドの必須パラメータ。`new_str`は`path`の`insert_line`行の後に挿入されます。",
                 "type": "integer",
             },
             "view_range": {
-                "description": "Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.",
+                "description": "`path`がファイルを指す場合の`view`コマンドのオプションパラメータ。指定がない場合、ファイル全体が表示されます。指定された場合、指定された行番号範囲のファイルが表示されます（例: [11, 12]で11行目と12行目が表示）。インデックスは1から開始します。`[start_line, -1]`を指定すると`start_line`から最後までの行が表示されます。",
                 "items": {"type": "integer"},
                 "type": "array",
             },
@@ -106,71 +105,65 @@ class StrReplaceEditor(BaseTool):
             result = await self.view(_path, view_range)
         elif command == "create":
             if file_text is None:
-                raise ToolError("Parameter `file_text` is required for command: create")
+                raise ToolError("createコマンドには`file_text`パラメータが必要です")
             self.write_file(_path, file_text)
             self._file_history[_path].append(file_text)
-            result = ToolResult(output=f"File created successfully at: {_path}")
+            result = ToolResult(output=f"ファイルが正常に作成されました: {_path}")
         elif command == "str_replace":
             if old_str is None:
-                raise ToolError(
-                    "Parameter `old_str` is required for command: str_replace"
-                )
+                raise ToolError("str_replaceコマンドには`old_str`パラメータが必要です")
             result = self.str_replace(_path, old_str, new_str)
         elif command == "insert":
             if insert_line is None:
-                raise ToolError(
-                    "Parameter `insert_line` is required for command: insert"
-                )
+                raise ToolError("insertコマンドには`insert_line`パラメータが必要です")
             if new_str is None:
-                raise ToolError("Parameter `new_str` is required for command: insert")
+                raise ToolError("insertコマンドには`new_str`パラメータが必要です")
             result = self.insert(_path, insert_line, new_str)
         elif command == "undo_edit":
             result = self.undo_edit(_path)
         else:
             raise ToolError(
-                f'Unrecognized command {command}. The allowed commands for the {self.name} tool are: {", ".join(get_args(Command))}'
+                f"認識できないコマンド {command}。{self.name}ツールで使用可能なコマンド: {', '.join(get_args(Command))}"
             )
         return str(result)
 
     def validate_path(self, command: str, path: Path):
-        """
-        Check that the path/command combination is valid.
-        """
+        """パスとコマンドの組み合わせが有効かチェックします。"""
         # Check if its an absolute path
         if not path.is_absolute():
-            suggested_path = Path("") / path
+            suggested_path = Path(path)
             raise ToolError(
-                f"The path {path} is not an absolute path, it should start with `/`. Maybe you meant {suggested_path}?"
+                f"パス {path} は絶対パスではありません。'/'で始める必要があります。{suggested_path}の間違いですか？"
             )
         # Check if path exists
         if not path.exists() and command != "create":
             raise ToolError(
-                f"The path {path} does not exist. Please provide a valid path."
+                f"パス {path} は存在しません。有効なパスを指定してください。"
             )
         if path.exists() and command == "create":
             raise ToolError(
-                f"File already exists at: {path}. Cannot overwrite files using command `create`."
+                f"ファイルが既に存在します: {path}。`create`コマンドでは既存のファイルを上書きできません。"
             )
         # Check if the path points to a directory
         if path.is_dir():
             if command != "view":
                 raise ToolError(
-                    f"The path {path} is a directory and only the `view` command can be used on directories"
+                    f"パス {path} はディレクトリで、ディレクトリに対しては`view`コマンドのみ使用できます"
                 )
 
     async def view(self, path: Path, view_range: list[int] | None = None):
-        """Implement the view command"""
+        """viewコマンドを実装します"""
         if path.is_dir():
             if view_range:
                 raise ToolError(
-                    "The `view_range` parameter is not allowed when `path` points to a directory."
+                    "`path`がディレクトリを指す場合、`view_range`パラメータは使用できません。"
                 )
 
             _, stdout, stderr = await run(
                 rf"find {path} -maxdepth 2 -not -path '*/\.*'"
             )
             if not stderr:
-                stdout = f"Here's the files and directories up to 2 levels deep in {path}, excluding hidden items:\n{stdout}\n"
+                stdout = f"{path}内の2階層までの非隠しファイルとディレクトリ一覧:\n{stdout}\n"
             return CLIResult(output=stdout, error=stderr)
 
         file_content = self.read_file(path)
@@ -178,22 +171,22 @@ class StrReplaceEditor(BaseTool):
         if view_range:
             if len(view_range) != 2 or not all(isinstance(i, int) for i in view_range):
                 raise ToolError(
-                    "Invalid `view_range`. It should be a list of two integers."
+                    "無効な`view_range`です。2つの整数からなるリストを指定してください。"
                 )
             file_lines = file_content.split("\n")
             n_lines_file = len(file_lines)
             init_line, final_line = view_range
             if init_line < 1 or init_line > n_lines_file:
                 raise ToolError(
-                    f"Invalid `view_range`: {view_range}. Its first element `{init_line}` should be within the range of lines of the file: {[1, n_lines_file]}"
+                    f"無効な`view_range`: {view_range}。最初の要素`{init_line}`はファイルの行範囲内である必要があります: {[1, n_lines_file]}"
                 )
             if final_line > n_lines_file:
                 raise ToolError(
-                    f"Invalid `view_range`: {view_range}. Its second element `{final_line}` should be smaller than the number of lines in the file: `{n_lines_file}`"
+                    f"無効な`view_range`: {view_range}。2番目の要素`{final_line}`はファイルの行数`{n_lines_file}`より小さい必要があります"
                 )
             if final_line != -1 and final_line < init_line:
                 raise ToolError(
-                    f"Invalid `view_range`: {view_range}. Its second element `{final_line}` should be larger or equal than its first `{init_line}`"
+                    f"無効な`view_range`: {view_range}。2番目の要素`{final_line}`は最初の要素`{init_line}`以上である必要があります"
                 )
 
             if final_line == -1:
@@ -206,7 +199,7 @@ class StrReplaceEditor(BaseTool):
         )
 
     def str_replace(self, path: Path, old_str: str, new_str: str | None):
-        """Implement the str_replace command, which replaces old_str with new_str in the file content"""
+        """str_replaceコマンドを実装します。ファイル内容のold_strをnew_strに置換します"""
         # Read the file content
         file_content = self.read_file(path).expandtabs()
         old_str = old_str.expandtabs()
@@ -216,9 +209,9 @@ class StrReplaceEditor(BaseTool):
         occurrences = file_content.count(old_str)
         if occurrences == 0:
             raise ToolError(
-                f"No replacement was performed, old_str `{old_str}` did not appear verbatim in {path}."
+                f"置換は実行されませんでした。old_str `{old_str}` は {path} に正確に一致する部分がありませんでした。"
             )
-        elif occurrences > 1:
+        if occurrences > 1:
             file_content_lines = file_content.split("\n")
             lines = [
                 idx + 1
@@ -226,7 +219,7 @@ class StrReplaceEditor(BaseTool):
                 if old_str in line
             ]
             raise ToolError(
-                f"No replacement was performed. Multiple occurrences of old_str `{old_str}` in lines {lines}. Please ensure it is unique"
+                f"置換は実行されませんでした。old_str `{old_str}` が複数の行 {lines} に出現しています。一意になるようにしてください"
             )
 
         # Replace old_str with new_str
@@ -245,16 +238,16 @@ class StrReplaceEditor(BaseTool):
         snippet = "\n".join(new_file_content.split("\n")[start_line : end_line + 1])
 
         # Prepare the success message
-        success_msg = f"The file {path} has been edited. "
+        success_msg = f"ファイル {path} を編集しました。"
         success_msg += self._make_output(
             snippet, f"a snippet of {path}", start_line + 1
         )
-        success_msg += "Review the changes and make sure they are as expected. Edit the file again if necessary."
+        success_msg += "変更内容を確認し、期待通りであることを確認してください。必要に応じてファイルを再編集してください。"
 
         return CLIResult(output=success_msg)
 
     def insert(self, path: Path, insert_line: int, new_str: str):
-        """Implement the insert command, which inserts new_str at the specified line in the file content."""
+        """insertコマンドを実装します。指定された行にnew_strを挿入します。"""
         file_text = self.read_file(path).expandtabs()
         new_str = new_str.expandtabs()
         file_text_lines = file_text.split("\n")
@@ -262,7 +255,7 @@ class StrReplaceEditor(BaseTool):
 
         if insert_line < 0 or insert_line > n_lines_file:
             raise ToolError(
-                f"Invalid `insert_line` parameter: {insert_line}. It should be within the range of lines of the file: {[0, n_lines_file]}"
+                f"無効な`insert_line`パラメータ: {insert_line}。ファイルの行範囲内である必要があります: {[0, n_lines_file]}"
             )
 
         new_str_lines = new_str.split("\n")
@@ -283,40 +276,42 @@ class StrReplaceEditor(BaseTool):
         self.write_file(path, new_file_text)
         self._file_history[path].append(file_text)
 
-        success_msg = f"The file {path} has been edited. "
+        success_msg = f"ファイル {path} を編集しました。"
         success_msg += self._make_output(
             snippet,
             "a snippet of the edited file",
             max(1, insert_line - SNIPPET_LINES + 1),
         )
-        success_msg += "Review the changes and make sure they are as expected (correct indentation, no duplicate lines, etc). Edit the file again if necessary."
+        success_msg += "変更内容を確認し、期待通り（インデントが正しい、重複行がない等）であることを確認してください。必要に応じてファイルを再編集してください。"
         return CLIResult(output=success_msg)
 
     def undo_edit(self, path: Path):
-        """Implement the undo_edit command."""
+        """undo_editコマンドを実装します。"""
         if not self._file_history[path]:
-            raise ToolError(f"No edit history found for {path}.")
+            raise ToolError(f"{path}の編集履歴がありません。")
 
         old_text = self._file_history[path].pop()
         self.write_file(path, old_text)
 
         return CLIResult(
-            output=f"Last edit to {path} undone successfully. {self._make_output(old_text, str(path))}"
+            output=f"{path}の最後の編集を元に戻しました。{self._make_output(old_text, str(path))}"
         )
 
     def read_file(self, path: Path):
-        """Read the content of a file from a given path; raise a ToolError if an error occurs."""
+        """指定されたパスからファイルの内容を読み込みます。エラーが発生した場合はToolErrorを発生させます。"""
         try:
             return path.read_text()
         except Exception as e:
-            raise ToolError(f"Ran into {e} while trying to read {path}") from None
+            raise ToolError(f"{path}の読み込み中にエラーが発生しました: {e}") from None
 
     def write_file(self, path: Path, file: str):
-        """Write the content of a file to a given path; raise a ToolError if an error occurs."""
+        """指定されたパスにファイルの内容を書き込みます。エラーが発生した場合はToolErrorを発生させます。"""
         try:
             path.write_text(file)
         except Exception as e:
-            raise ToolError(f"Ran into {e} while trying to write to {path}") from None
+            raise ToolError(
+                f"{path}への書き込み中にエラーが発生しました: {e}"
+            ) from None
 
     def _make_output(
         self,
@@ -325,7 +320,7 @@ class StrReplaceEditor(BaseTool):
         init_line: int = 1,
         expand_tabs: bool = True,
     ):
-        """Generate output for the CLI based on the content of a file."""
+        """ファイルの内容に基づいてCLI用の出力を生成します。"""
         file_content = maybe_truncate(file_content)
         if expand_tabs:
             file_content = file_content.expandtabs()
@@ -335,8 +330,4 @@ class StrReplaceEditor(BaseTool):
                 for i, line in enumerate(file_content.split("\n"))
             ]
         )
-        return (
-            f"Here's the result of running `cat -n` on {file_descriptor}:\n"
-            + file_content
-            + "\n"
-        )
+        return f"{file_descriptor}に対する`cat -n`の実行結果:\n" + file_content + "\n"

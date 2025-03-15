@@ -1,27 +1,29 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar, Optional
 
 from pydantic import BaseModel, Field
 
 
 class BaseTool(ABC, BaseModel):
+    """ツールの基本クラス。"""
+
     name: str
     description: str
-    parameters: Optional[dict] = None
+    parameters: ClassVar[dict | None] = None
 
     class Config:
         arbitrary_types_allowed = True
 
     async def __call__(self, **kwargs) -> Any:
-        """Execute the tool with given parameters."""
+        """与えられたパラメータでツールを実行します。"""
         return await self.execute(**kwargs)
 
     @abstractmethod
     async def execute(self, **kwargs) -> Any:
-        """Execute the tool with given parameters."""
+        """与えられたパラメータでツールを実行します。"""
 
-    def to_param(self) -> Dict:
-        """Convert tool to function call format."""
+    def to_param(self) -> dict:
+        """ツールを関数呼び出し形式に変換します。"""
         return {
             "type": "function",
             "function": {
@@ -33,11 +35,11 @@ class BaseTool(ABC, BaseModel):
 
 
 class ToolResult(BaseModel):
-    """Represents the result of a tool execution."""
+    """ツール実行の結果を表現します。"""
 
     output: Any = Field(default=None)
-    error: Optional[str] = Field(default=None)
-    system: Optional[str] = Field(default=None)
+    error: str | None = Field(default=None)
+    system: str | None = Field(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -47,12 +49,12 @@ class ToolResult(BaseModel):
 
     def __add__(self, other: "ToolResult"):
         def combine_fields(
-            field: Optional[str], other_field: Optional[str], concatenate: bool = True
+            field: str | None, other_field: str | None, concatenate: bool = True
         ):
             if field and other_field:
                 if concatenate:
                     return field + other_field
-                raise ValueError("Cannot combine tool results")
+                raise ValueError("ツール結果を結合できません")
             return field or other_field
 
         return ToolResult(
@@ -62,21 +64,22 @@ class ToolResult(BaseModel):
         )
 
     def __str__(self):
-        return f"Error: {self.error}" if self.error else self.output
+        return f"エラー: {self.error}" if self.error else self.output
 
     def replace(self, **kwargs):
-        """Returns a new ToolResult with the given fields replaced."""
-        # return self.copy(update=kwargs)
+        """指定されたフィールドを置き換えた新しいToolResultを返します。"""
         return type(self)(**{**self.dict(), **kwargs})
 
 
 class CLIResult(ToolResult):
-    """A ToolResult that can be rendered as a CLI output."""
+    """CLIの出力として表示可能なToolResult。"""
 
 
 class ToolFailure(ToolResult):
-    """A ToolResult that represents a failure."""
+    """失敗を表すToolResult。"""
 
 
 class AgentAwareTool:
+    """エージェントを認識するツール。"""
+
     agent: Optional = None

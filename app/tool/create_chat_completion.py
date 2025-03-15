@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Type, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel, Field
 
@@ -7,9 +7,7 @@ from app.tool import BaseTool
 
 class CreateChatCompletion(BaseTool):
     name: str = "create_chat_completion"
-    description: str = (
-        "Creates a structured completion with specified output formatting."
-    )
+    description: str = "指定された出力形式で構造化された補完を生成します。"
 
     # Type mapping for JSON schema
     type_mapping: dict = {
@@ -20,24 +18,24 @@ class CreateChatCompletion(BaseTool):
         dict: "object",
         list: "array",
     }
-    response_type: Optional[Type] = None
-    required: List[str] = Field(default_factory=lambda: ["response"])
+    response_type: type | None = None
+    required: list[str] = Field(default_factory=lambda: ["response"])
 
-    def __init__(self, response_type: Optional[Type] = str):
-        """Initialize with a specific response type."""
+    def __init__(self, response_type: type | None = str):
+        """特定のレスポンス型で初期化します。"""
         super().__init__()
         self.response_type = response_type
         self.parameters = self._build_parameters()
 
     def _build_parameters(self) -> dict:
-        """Build parameters schema based on response type."""
+        """レスポンス型に基づいてパラメータスキーマを構築します。"""
         if self.response_type == str:
             return {
                 "type": "object",
                 "properties": {
                     "response": {
                         "type": "string",
-                        "description": "The response text that should be delivered to the user.",
+                        "description": "ユーザーに配信されるべきレスポンステキスト。",
                     },
                 },
                 "required": self.required,
@@ -55,12 +53,12 @@ class CreateChatCompletion(BaseTool):
 
         return self._create_type_schema(self.response_type)
 
-    def _create_type_schema(self, type_hint: Type) -> dict:
-        """Create a JSON schema for the given type."""
+    def _create_type_schema(self, type_hint: type) -> dict:
+        """指定された型のJSONスキーマを作成します。"""
         origin = get_origin(type_hint)
         args = get_args(type_hint)
 
-        # Handle primitive types
+        # プリミティブ型の処理
         if origin is None:
             return {
                 "type": "object",
@@ -73,7 +71,7 @@ class CreateChatCompletion(BaseTool):
                 "required": self.required,
             }
 
-        # Handle List type
+        # リスト型の処理
         if origin is list:
             item_type = args[0] if args else Any
             return {
@@ -87,7 +85,7 @@ class CreateChatCompletion(BaseTool):
                 "required": self.required,
             }
 
-        # Handle Dict type
+        # 辞書型の処理
         if origin is dict:
             value_type = args[1] if len(args) > 1 else Any
             return {
@@ -101,24 +99,24 @@ class CreateChatCompletion(BaseTool):
                 "required": self.required,
             }
 
-        # Handle Union type
+        # Union型の処理
         if origin is Union:
             return self._create_union_schema(args)
 
         return self._build_parameters()
 
-    def _get_type_info(self, type_hint: Type) -> dict:
-        """Get type information for a single type."""
+    def _get_type_info(self, type_hint: type) -> dict:
+        """単一の型の型情報を取得します。"""
         if isinstance(type_hint, type) and issubclass(type_hint, BaseModel):
             return type_hint.model_json_schema()
 
         return {
             "type": self.type_mapping.get(type_hint, "string"),
-            "description": f"Value of type {getattr(type_hint, '__name__', 'any')}",
+            "description": f"型{getattr(type_hint, '__name__', 'any')}の値",
         }
 
     def _create_union_schema(self, types: tuple) -> dict:
-        """Create schema for Union types."""
+        """Union型のスキーマを作成します。"""
         return {
             "type": "object",
             "properties": {
@@ -128,30 +126,30 @@ class CreateChatCompletion(BaseTool):
         }
 
     async def execute(self, required: list | None = None, **kwargs) -> Any:
-        """Execute the chat completion with type conversion.
+        """型変換を伴うチャット補完を実行します。
 
-        Args:
-            required: List of required field names or None
-            **kwargs: Response data
+        引数:
+            required: 必須フィールド名のリストまたはNone
+            **kwargs: レスポンスデータ
 
-        Returns:
-            Converted response based on response_type
+        戻り値:
+            response_typeに基づいて変換されたレスポンス
         """
         required = required or self.required
 
-        # Handle case when required is a list
+        # requiredがリストの場合の処理
         if isinstance(required, list) and len(required) > 0:
             if len(required) == 1:
                 required_field = required[0]
                 result = kwargs.get(required_field, "")
             else:
-                # Return multiple fields as a dictionary
+                # 複数のフィールドを辞書として返す
                 return {field: kwargs.get(field, "") for field in required}
         else:
             required_field = "response"
             result = kwargs.get(required_field, "")
 
-        # Type conversion logic
+        # 型変換ロジック
         if self.response_type == str:
             return result
 

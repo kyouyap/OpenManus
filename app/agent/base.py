@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -10,44 +10,48 @@ from app.schema import ROLE_TYPE, AgentState, Memory, Message
 
 
 class BaseAgent(BaseModel, ABC):
-    """Abstract base class for managing agent state and execution.
+    """エージェントの状態と実行を管理する抽象基底クラス。
 
-    Provides foundational functionality for state transitions, memory management,
-    and a step-based execution loop. Subclasses must implement the `step` method.
+    状態遷移、メモリ管理、ステップベースの実行ループのための基本機能を提供します。
+    サブクラスは`step`メソッドを実装する必要があります。
     """
 
     # Core attributes
-    name: str = Field(..., description="Unique name of the agent")
-    description: Optional[str] = Field(None, description="Optional agent description")
+    name: str = Field(..., description="エージェントの一意な名前")
+    description: str | None = Field(None, description="エージェントの説明（任意）")
 
-    # Prompts
-    system_prompt: Optional[str] = Field(
-        None, description="System-level instruction prompt"
+    # プロンプト
+    system_prompt: str | None = Field(
+        None, description="システムレベルの指示プロンプト"
     )
-    next_step_prompt: Optional[str] = Field(
-        None, description="Prompt for determining next action"
+    next_step_prompt: str | None = Field(
+        None, description="次のアクションを決定するためのプロンプト"
     )
 
-    # Dependencies
-    llm: LLM = Field(default_factory=LLM, description="Language model instance")
-    memory: Memory = Field(default_factory=Memory, description="Agent's memory store")
+    # 依存関係
+    llm: LLM = Field(default_factory=LLM, description="言語モデルのインスタンス")
+    memory: Memory = Field(
+        default_factory=Memory, description="エージェントのメモリストア"
+    )
     state: AgentState = Field(
-        default=AgentState.IDLE, description="Current agent state"
+        default=AgentState.IDLE, description="現在のエージェント状態"
     )
 
-    # Execution control
-    max_steps: int = Field(default=10, description="Maximum steps before termination")
-    current_step: int = Field(default=0, description="Current step in execution")
+    # 実行制御
+    max_steps: int = Field(default=10, description="終了までの最大ステップ数")
+    current_step: int = Field(default=0, description="実行中の現在のステップ")
 
     duplicate_threshold: int = 2
 
     class Config:
+        """Pydanticモデルの設定オプション。"""
+
         arbitrary_types_allowed = True
-        extra = "allow"  # Allow extra fields for flexibility in subclasses
+        extra = "allow"  # サブクラスの柔軟性のために追加フィールドを許可
 
     @model_validator(mode="after")
     def initialize_agent(self) -> "BaseAgent":
-        """Initialize agent with default settings if not provided."""
+        """提供されていない場合、デフォルト設定でエージェントを初期化します。"""
         if self.llm is None or not isinstance(self.llm, LLM):
             self.llm = LLM(config_name=self.name.lower())
         if not isinstance(self.memory, Memory):
@@ -55,20 +59,22 @@ class BaseAgent(BaseModel, ABC):
         return self
 
     @asynccontextmanager
-    async def state_context(self, new_state: AgentState):
-        """Context manager for safe agent state transitions.
+    async def state_context(self, new_state: AgentState) -> AsyncGenerator[None, None]:
+        """安全なエージェント状態遷移のためのコンテキストマネージャー。
 
         Args:
-            new_state: The state to transition to during the context.
+            new_state: コンテキスト中に遷移する状態。
 
         Yields:
-            None: Allows execution within the new state.
+            None: 新しい状態での実行を可能にします。
 
         Raises:
-            ValueError: If the new_state is invalid.
+            ValueError: new_stateが無効な場合。
+
         """
         if not isinstance(new_state, AgentState):
-            raise ValueError(f"Invalid state: {new_state}")
+            error_message = f"Invalid state: {new_state}"
+            raise TypeError(error_message)
 
         previous_state = self.state
         self.state = new_state
@@ -86,15 +92,16 @@ class BaseAgent(BaseModel, ABC):
         content: str,
         **kwargs,
     ) -> None:
-        """Add a message to the agent's memory.
+        """エージェントのメモリにメッセージを追加します。
 
         Args:
-            role: The role of the message sender (user, system, assistant, tool).
-            content: The message content.
-            **kwargs: Additional arguments (e.g., tool_call_id for tool messages).
+            role: メッセージ送信者の役割（user、system、assistant、tool）。
+            content: メッセージの内容。
+            **kwargs: 追加の引数（例：toolメッセージのtool_call_id）。
 
         Raises:
-            ValueError: If the role is unsupported.
+            ValueError: roleが未対応の場合。
+
         """
         message_map = {
             "user": Message.user_message,
@@ -110,17 +117,18 @@ class BaseAgent(BaseModel, ABC):
         msg = msg_factory(content, **kwargs) if role == "tool" else msg_factory(content)
         self.memory.add_message(msg)
 
-    async def run(self, request: Optional[str] = None) -> str:
-        """Execute the agent's main loop asynchronously.
+    async def run(self, request: str | None = None) -> str:
+        """エージェントのメインループを非同期で実行します。
 
         Args:
-            request: Optional initial user request to process.
+            request: 処理する初期ユーザーリクエスト（任意）。
 
         Returns:
-            A string summarizing the execution results.
+            実行結果を要約した文字列。
 
         Raises:
-            RuntimeError: If the agent is not in IDLE state at start.
+            RuntimeError: 開始時にエージェントがIDLE状態でない場合。
+
         """
         if self.state != AgentState.IDLE:
             raise RuntimeError(f"Cannot run agent from state: {self.state}")
@@ -128,7 +136,7 @@ class BaseAgent(BaseModel, ABC):
         if request:
             self.update_memory("user", request)
 
-        results: List[str] = []
+        results: list[str] = []
         async with self.state_context(AgentState.RUNNING):
             while (
                 self.current_step < self.max_steps and self.state != AgentState.FINISHED
@@ -152,20 +160,20 @@ class BaseAgent(BaseModel, ABC):
 
     @abstractmethod
     async def step(self) -> str:
-        """Execute a single step in the agent's workflow.
+        """エージェントのワークフローで単一ステップを実行します。
 
-        Must be implemented by subclasses to define specific behavior.
+        サブクラスで具体的な動作を定義するために実装する必要があります。
         """
 
     def handle_stuck_state(self):
-        """Handle stuck state by adding a prompt to change strategy"""
+        """戦略を変更するプロンプトを追加してスタック状態を処理します"""
         stuck_prompt = "\
         Observed duplicate responses. Consider new strategies and avoid repeating ineffective paths already attempted."
         self.next_step_prompt = f"{stuck_prompt}\n{self.next_step_prompt}"
         logger.warning(f"Agent detected stuck state. Added prompt: {stuck_prompt}")
 
     def is_stuck(self) -> bool:
-        """Check if the agent is stuck in a loop by detecting duplicate content"""
+        """重複コンテンツを検出してエージェントがループでスタックしているかを確認します"""
         if len(self.memory.messages) < 2:
             return False
 
@@ -183,11 +191,11 @@ class BaseAgent(BaseModel, ABC):
         return duplicate_count >= self.duplicate_threshold
 
     @property
-    def messages(self) -> List[Message]:
-        """Retrieve a list of messages from the agent's memory."""
+    def messages(self) -> list[Message]:
+        """エージェントのメモリからメッセージのリストを取得します。"""
         return self.memory.messages
 
     @messages.setter
-    def messages(self, value: List[Message]):
-        """Set the list of messages in the agent's memory."""
+    def messages(self, value: list[Message]):
+        """エージェントのメモリにメッセージのリストを設定します。"""
         self.memory.messages = value

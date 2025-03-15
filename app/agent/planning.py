@@ -1,5 +1,4 @@
 import time
-from typing import Dict, List, Optional
 
 from pydantic import Field, model_validator
 
@@ -11,15 +10,14 @@ from app.tool import PlanningTool, Terminate, ToolCollection
 
 
 class PlanningAgent(ToolCallAgent):
-    """
-    An agent that creates and manages plans to solve tasks.
+    """タスクを解決するための計画を作成・管理するエージェント。
 
-    This agent uses a planning tool to create and manage structured plans,
-    and tracks progress through individual steps until task completion.
+    このエージェントは計画ツールを使用して構造化された計画を作成・管理し、
+    タスクが完了するまで個々のステップの進捗を追跡します。
     """
 
     name: str = "planning"
-    description: str = "An agent that creates and manages plans to solve tasks"
+    description: str = "タスクを解決するための計画を作成・管理するエージェント"
 
     system_prompt: str = PLANNING_SYSTEM_PROMPT
     next_step_prompt: str = NEXT_STEP_PROMPT
@@ -28,20 +26,20 @@ class PlanningAgent(ToolCallAgent):
         default_factory=lambda: ToolCollection(PlanningTool(), Terminate())
     )
     tool_choices: TOOL_CHOICE_TYPE = ToolChoice.AUTO  # type: ignore
-    special_tool_names: List[str] = Field(default_factory=lambda: [Terminate().name])
+    special_tool_names: list[str] = Field(default_factory=lambda: [Terminate().name])
 
-    tool_calls: List[ToolCall] = Field(default_factory=list)
-    active_plan_id: Optional[str] = Field(default=None)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+    active_plan_id: str | None = Field(default=None)
 
-    # Add a dictionary to track the step status for each tool call
-    step_execution_tracker: Dict[str, Dict] = Field(default_factory=dict)
-    current_step_index: Optional[int] = None
+    # 各ツール呼び出しのステップ状態を追跡するための辞書
+    step_execution_tracker: dict[str, dict] = Field(default_factory=dict)
+    current_step_index: int | None = None
 
     max_steps: int = 20
 
     @model_validator(mode="after")
     def initialize_plan_and_verify_tools(self) -> "PlanningAgent":
-        """Initialize the agent with a default plan ID and validate required tools."""
+        """デフォルトのプランIDでエージェントを初期化し、必要なツールを検証します。"""
         self.active_plan_id = f"plan_{int(time.time())}"
 
         if "planning" not in self.available_tools.tool_map:
@@ -50,7 +48,7 @@ class PlanningAgent(ToolCallAgent):
         return self
 
     async def think(self) -> bool:
-        """Decide the next action based on plan status."""
+        """計画の状態に基づいて次のアクションを決定します。"""
         prompt = (
             f"CURRENT PLAN STATUS:\n{await self.get_plan()}\n\n{self.next_step_prompt}"
             if self.active_plan_id
@@ -81,7 +79,7 @@ class PlanningAgent(ToolCallAgent):
         return result
 
     async def act(self) -> str:
-        """Execute a step and track its completion status."""
+        """ステップを実行し、その完了状態を追跡します。"""
         result = await super().act()
 
         # After executing the tool, update the plan status
@@ -103,7 +101,7 @@ class PlanningAgent(ToolCallAgent):
         return result
 
     async def get_plan(self) -> str:
-        """Retrieve the current plan status."""
+        """現在の計画の状態を取得します。"""
         if not self.active_plan_id:
             return "No active plan. Please create a plan first."
 
@@ -113,16 +111,15 @@ class PlanningAgent(ToolCallAgent):
         )
         return result.output if hasattr(result, "output") else str(result)
 
-    async def run(self, request: Optional[str] = None) -> str:
-        """Run the agent with an optional initial request."""
+    async def run(self, request: str | None = None) -> str:
+        """オプションの初期リクエストでエージェントを実行します。"""
         if request:
             await self.create_initial_plan(request)
         return await super().run()
 
     async def update_plan_status(self, tool_call_id: str) -> None:
-        """
-        Update the current plan progress based on completed tool execution.
-        Only marks a step as completed if the associated tool has been successfully executed.
+        """完了したツールの実行に基づいて現在の計画の進捗を更新します。
+        関連するツールが正常に実行された場合のみ、ステップを完了としてマークします。
         """
         if not self.active_plan_id:
             return
@@ -155,10 +152,9 @@ class PlanningAgent(ToolCallAgent):
         except Exception as e:
             logger.warning(f"Failed to update plan status: {e}")
 
-    async def _get_current_step_index(self) -> Optional[int]:
-        """
-        Parse the current plan to identify the first non-completed step's index.
-        Returns None if no active step is found.
+    async def _get_current_step_index(self) -> int | None:
+        """現在の計画を解析して、最初の未完了ステップのインデックスを特定します。
+        アクティブなステップが見つからない場合はNoneを返します。
         """
         if not self.active_plan_id:
             return None
@@ -199,7 +195,7 @@ class PlanningAgent(ToolCallAgent):
             return None
 
     async def create_initial_plan(self, request: str) -> None:
-        """Create an initial plan based on the request."""
+        """リクエストに基づいて初期計画を作成します。"""
         logger.info(f"Creating initial plan with ID: {self.active_plan_id}")
 
         messages = [

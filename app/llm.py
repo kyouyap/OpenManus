@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Union
-
 import tiktoken
 from openai import (
     APIError,
@@ -18,7 +16,7 @@ from tenacity import (
 
 from app.config import LLMSettings, config
 from app.exceptions import TokenLimitExceeded
-from app.logger import logger  # Assuming a logger is set up in your app
+from app.logger import logger
 from app.schema import (
     ROLE_VALUES,
     TOOL_CHOICE_TYPE,
@@ -27,15 +25,14 @@ from app.schema import (
     ToolChoice,
 )
 
-
 REASONING_MODELS = ["o1", "o3-mini"]
 
 
 class LLM:
-    _instances: Dict[str, "LLM"] = {}
+    _instances: dict[str, "LLM"] = {}
 
     def __new__(
-        cls, config_name: str = "default", llm_config: Optional[LLMSettings] = None
+        cls, config_name: str = "default", llm_config: LLMSettings | None = None
     ):
         if config_name not in cls._instances:
             instance = super().__new__(cls)
@@ -44,9 +41,9 @@ class LLM:
         return cls._instances[config_name]
 
     def __init__(
-        self, config_name: str = "default", llm_config: Optional[LLMSettings] = None
+        self, config_name: str = "default", llm_config: LLMSettings | None = None
     ):
-        if not hasattr(self, "client"):  # Only initialize if not already initialized
+        if not hasattr(self, "client"):  # 初期化済みでない場合のみ初期化
             llm_config = llm_config or config.llm
             llm_config = llm_config.get(config_name, llm_config["default"])
             self.model = llm_config.model
@@ -57,7 +54,7 @@ class LLM:
             self.api_version = llm_config.api_version
             self.base_url = llm_config.base_url
 
-            # Add token counting related attributes
+            # トークン計算関連の属性を追加
             self.total_input_tokens = 0
             self.max_input_tokens = (
                 llm_config.max_input_tokens
@@ -65,11 +62,11 @@ class LLM:
                 else None
             )
 
-            # Initialize tokenizer
+            # トークナイザーの初期化
             try:
                 self.tokenizer = tiktoken.encoding_for_model(self.model)
             except KeyError:
-                # If the model is not in tiktoken's presets, use cl100k_base as default
+                # モデルがtiktokenのプリセットに存在しない場合、デフォルトとしてcl100k_baseを使用
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
             if self.api_type == "azure":
@@ -82,98 +79,97 @@ class LLM:
                 self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
     def count_tokens(self, text: str) -> int:
-        """Calculate the number of tokens in a text"""
+        """テキスト内のトークン数を計算します"""
         if not text:
             return 0
         return len(self.tokenizer.encode(text))
 
-    def count_message_tokens(self, messages: List[dict]) -> int:
-        """Calculate the number of tokens in a message list"""
+    def count_message_tokens(self, messages: list[dict]) -> int:
+        """メッセージリスト内のトークン数を計算します"""
         token_count = 0
         for message in messages:
-            # Base token count for each message (according to OpenAI's calculation method)
-            token_count += 4  # Base token count for each message
+            # 各メッセージの基本トークン数（OpenAIの計算方法に従う）
+            token_count += 4  # 各メッセージの基本トークン数
 
-            # Calculate tokens for the role
+            # ロールのトークン数を計算
             if "role" in message:
                 token_count += self.count_tokens(message["role"])
 
-            # Calculate tokens for the content
-            if "content" in message and message["content"]:
+            # コンテンツのトークン数を計算
+            if message.get("content"):
                 token_count += self.count_tokens(message["content"])
 
-            # Calculate tokens for tool calls
-            if "tool_calls" in message and message["tool_calls"]:
+            # ツール呼び出しのトークン数を計算
+            if message.get("tool_calls"):
                 for tool_call in message["tool_calls"]:
                     if "function" in tool_call:
-                        # Function name
+                        # 関数名
                         if "name" in tool_call["function"]:
                             token_count += self.count_tokens(
                                 tool_call["function"]["name"]
                             )
-                        # Function arguments
+                        # 関数の引数
                         if "arguments" in tool_call["function"]:
                             token_count += self.count_tokens(
                                 tool_call["function"]["arguments"]
                             )
 
-            # Calculate tokens for tool responses
-            if "name" in message and message["name"]:
+            # ツールレスポンスのトークン数を計算
+            if message.get("name"):
                 token_count += self.count_tokens(message["name"])
 
-            if "tool_call_id" in message and message["tool_call_id"]:
+            if message.get("tool_call_id"):
                 token_count += self.count_tokens(message["tool_call_id"])
 
-        # Add extra tokens for message format
-        token_count += 2  # Extra tokens for message format
+        # メッセージフォーマットの追加トークン
+        token_count += 2  # メッセージフォーマットの追加トークン
 
         return token_count
 
     def update_token_count(self, input_tokens: int) -> None:
-        """Update token counts"""
-        # Only track tokens if max_input_tokens is set
+        """トークン数を更新します"""
+        # max_input_tokensが設定されている場合のみトークンを追跡
         self.total_input_tokens += input_tokens
         logger.info(
-            f"Token usage: Input={input_tokens}, Cumulative Input={self.total_input_tokens}"
+            f"トークン使用量: 入力={input_tokens}, 累積入力={self.total_input_tokens}"
         )
 
     def check_token_limit(self, input_tokens: int) -> bool:
-        """Check if token limits are exceeded"""
+        """トークン制限を超えていないかチェックします"""
         if self.max_input_tokens is not None:
             return (self.total_input_tokens + input_tokens) <= self.max_input_tokens
-        # If max_input_tokens is not set, always return True
+        # max_input_tokensが設定されていない場合は常にTrue
         return True
 
     def get_limit_error_message(self, input_tokens: int) -> str:
-        """Generate error message for token limit exceeded"""
+        """トークン制限超過のエラーメッセージを生成します"""
         if (
             self.max_input_tokens is not None
             and (self.total_input_tokens + input_tokens) > self.max_input_tokens
         ):
-            return f"Request may exceed input token limit (Current: {self.total_input_tokens}, Needed: {input_tokens}, Max: {self.max_input_tokens})"
+            return f"リクエストが入力トークン制限を超える可能性があります（現在: {self.total_input_tokens}, 必要: {input_tokens}, 最大: {self.max_input_tokens}）"
 
-        return "Token limit exceeded"
+        return "トークン制限を超過しました"
 
     @staticmethod
-    def format_messages(messages: List[Union[dict, Message]]) -> List[dict]:
-        """
-        Format messages for LLM by converting them to OpenAI message format.
+    def format_messages(messages: list[dict | Message]) -> list[dict]:
+        """メッセージをLLM用にフォーマットし、OpenAIメッセージ形式に変換します。
 
-        Args:
-            messages: List of messages that can be either dict or Message objects
+        引数:
+            messages: dictまたはMessageオブジェクトのメッセージリスト
 
-        Returns:
-            List[dict]: List of formatted messages in OpenAI format
+        戻り値:
+            List[dict]: OpenAI形式でフォーマットされたメッセージのリスト
 
-        Raises:
-            ValueError: If messages are invalid or missing required fields
-            TypeError: If unsupported message types are provided
+        例外:
+            ValueError: メッセージが無効または必須フィールドが欠けている場合
+            TypeError: サポートされていないメッセージタイプが提供された場合
 
-        Examples:
+        例:
             >>> msgs = [
-            ...     Message.system_message("You are a helpful assistant"),
-            ...     {"role": "user", "content": "Hello"},
-            ...     Message.user_message("How are you?")
+            ...     Message.system_message("あなたは役立つアシスタントです"),
+            ...     {"role": "user", "content": "こんにちは"},
+            ...     Message.user_message("調子はどうですか？")
             ... ]
             >>> formatted = LLM.format_messages(msgs)
         """
@@ -183,19 +179,21 @@ class LLM:
             if isinstance(message, Message):
                 message = message.to_dict()
             if isinstance(message, dict):
-                # If message is a dict, ensure it has required fields
+                # メッセージがdictの場合、必須フィールドを確認
                 if "role" not in message:
-                    raise ValueError("Message dict must contain 'role' field")
+                    raise ValueError("メッセージdictには'role'フィールドが必要です")
                 if "content" in message or "tool_calls" in message:
                     formatted_messages.append(message)
-                # else: do not include the message
+                # それ以外の場合はメッセージを含めない
             else:
-                raise TypeError(f"Unsupported message type: {type(message)}")
+                raise TypeError(
+                    f"サポートされていないメッセージタイプ: {type(message)}"
+                )
 
-        # Validate all messages have required fields
+        # 全てのメッセージが必須フィールドを持っているか検証
         for msg in formatted_messages:
             if msg["role"] not in ROLE_VALUES:
-                raise ValueError(f"Invalid role: {msg['role']}")
+                raise ValueError(f"無効なロール: {msg['role']}")
 
         return formatted_messages
 
@@ -204,48 +202,47 @@ class LLM:
         stop=stop_after_attempt(6),
         retry=retry_if_exception_type(
             (OpenAIError, Exception, ValueError)
-        ),  # Don't retry TokenLimitExceeded
+        ),  # TokenLimitExceededは再試行しない
     )
     async def ask(
         self,
-        messages: List[Union[dict, Message]],
-        system_msgs: Optional[List[Union[dict, Message]]] = None,
+        messages: list[dict | Message],
+        system_msgs: list[dict | Message] | None = None,
         stream: bool = True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
     ) -> str:
-        """
-        Send a prompt to the LLM and get the response.
+        """LLMにプロンプトを送信して応答を取得します。
 
-        Args:
-            messages: List of conversation messages
-            system_msgs: Optional system messages to prepend
-            stream (bool): Whether to stream the response
-            temperature (float): Sampling temperature for the response
+        引数:
+            messages: 会話メッセージのリスト
+            system_msgs: 先頭に追加するオプションのシステムメッセージ
+            stream (bool): 応答をストリーミングするかどうか
+            temperature (float): 応答のサンプリング温度
 
-        Returns:
-            str: The generated response
+        戻り値:
+            str: 生成された応答
 
-        Raises:
-            TokenLimitExceeded: If token limits are exceeded
-            ValueError: If messages are invalid or response is empty
-            OpenAIError: If API call fails after retries
-            Exception: For unexpected errors
+        例外:
+            TokenLimitExceeded: トークン制限を超えた場合
+            ValueError: メッセージが無効または応答が空の場合
+            OpenAIError: APIコールが再試行後も失敗した場合
+            Exception: 予期しないエラーの場合
         """
         try:
-            # Format system and user messages
+            # システムメッセージとユーザーメッセージをフォーマット
             if system_msgs:
                 system_msgs = self.format_messages(system_msgs)
                 messages = system_msgs + self.format_messages(messages)
             else:
                 messages = self.format_messages(messages)
 
-            # Calculate input token count
+            # 入力トークン数を計算
             input_tokens = self.count_message_tokens(messages)
 
-            # Check if token limits are exceeded
+            # トークン制限を超えていないかチェック
             if not self.check_token_limit(input_tokens):
                 error_message = self.get_limit_error_message(input_tokens)
-                # Raise a special exception that won't be retried
+                # 再試行されない特別な例外を発生
                 raise TokenLimitExceeded(error_message)
 
             params = {
@@ -262,20 +259,20 @@ class LLM:
                 )
 
             if not stream:
-                # Non-streaming request
+                # 非ストリーミングリクエスト
                 params["stream"] = False
 
                 response = await self.client.chat.completions.create(**params)
 
                 if not response.choices or not response.choices[0].message.content:
-                    raise ValueError("Empty or invalid response from LLM")
+                    raise ValueError("LLMからの応答が空または無効です")
 
-                # Update token counts
+                # トークン数を更新
                 self.update_token_count(response.usage.prompt_tokens)
 
                 return response.choices[0].message.content
 
-            # Streaming request, For streaming, update estimated token count before making the request
+            # ストリーミングリクエスト、リクエスト前に推定トークン数を更新
             self.update_token_count(input_tokens)
 
             params["stream"] = True
@@ -287,30 +284,32 @@ class LLM:
                 collected_messages.append(chunk_message)
                 print(chunk_message, end="", flush=True)
 
-            print()  # Newline after streaming
+            print()  # ストリーミング後の改行
             full_response = "".join(collected_messages).strip()
             if not full_response:
-                raise ValueError("Empty response from streaming LLM")
+                raise ValueError("ストリーミングLLMからの応答が空です")
 
             return full_response
 
         except TokenLimitExceeded:
-            # Re-raise token limit errors without logging
+            # トークン制限エラーはログを記録せずに再発生
             raise
         except ValueError as ve:
-            logger.error(f"Validation error: {ve}")
+            logger.error(f"バリデーションエラー: {ve}")
             raise
         except OpenAIError as oe:
-            logger.error(f"OpenAI API error: {oe}")
+            logger.error(f"OpenAI APIエラー: {oe}")
             if isinstance(oe, AuthenticationError):
-                logger.error("Authentication failed. Check API key.")
+                logger.error("認証に失敗しました。APIキーを確認してください。")
             elif isinstance(oe, RateLimitError):
-                logger.error("Rate limit exceeded. Consider increasing retry attempts.")
+                logger.error(
+                    "レート制限を超過しました。再試行回数の増加を検討してください。"
+                )
             elif isinstance(oe, APIError):
-                logger.error(f"API error: {oe}")
+                logger.error(f"APIエラー: {oe}")
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in ask: {e}")
+            logger.error(f"askでの予期しないエラー: {e}")
             raise
 
     @retry(
@@ -318,55 +317,54 @@ class LLM:
         stop=stop_after_attempt(6),
         retry=retry_if_exception_type(
             (OpenAIError, Exception, ValueError)
-        ),  # Don't retry TokenLimitExceeded
+        ),  # TokenLimitExceededは再試行しない
     )
     async def ask_tool(
         self,
-        messages: List[Union[dict, Message]],
-        system_msgs: Optional[List[Union[dict, Message]]] = None,
+        messages: list[dict | Message],
+        system_msgs: list[dict | Message] | None = None,
         timeout: int = 300,
-        tools: Optional[List[dict]] = None,
+        tools: list[dict] | None = None,
         tool_choice: TOOL_CHOICE_TYPE = ToolChoice.AUTO,  # type: ignore
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         **kwargs,
     ):
-        """
-        Ask LLM using functions/tools and return the response.
+        """関数/ツールを使用してLLMに問い合わせ、応答を返します。
 
-        Args:
-            messages: List of conversation messages
-            system_msgs: Optional system messages to prepend
-            timeout: Request timeout in seconds
-            tools: List of tools to use
-            tool_choice: Tool choice strategy
-            temperature: Sampling temperature for the response
-            **kwargs: Additional completion arguments
+        引数:
+            messages: 会話メッセージのリスト
+            system_msgs: 先頭に追加するオプションのシステムメッセージ
+            timeout: リクエストのタイムアウト（秒）
+            tools: 使用するツールのリスト
+            tool_choice: ツール選択戦略
+            temperature: 応答のサンプリング温度
+            **kwargs: 追加の補完引数
 
-        Returns:
-            ChatCompletionMessage: The model's response
+        戻り値:
+            ChatCompletionMessage: モデルの応答
 
-        Raises:
-            TokenLimitExceeded: If token limits are exceeded
-            ValueError: If tools, tool_choice, or messages are invalid
-            OpenAIError: If API call fails after retries
-            Exception: For unexpected errors
+        例外:
+            TokenLimitExceeded: トークン制限を超えた場合
+            ValueError: ツール、tool_choice、またはメッセージが無効な場合
+            OpenAIError: APIコールが再試行後も失敗した場合
+            Exception: 予期しないエラーの場合
         """
         try:
-            # Validate tool_choice
+            # tool_choiceを検証
             if tool_choice not in TOOL_CHOICE_VALUES:
-                raise ValueError(f"Invalid tool_choice: {tool_choice}")
+                raise ValueError(f"無効なtool_choice: {tool_choice}")
 
-            # Format messages
+            # メッセージをフォーマット
             if system_msgs:
                 system_msgs = self.format_messages(system_msgs)
                 messages = system_msgs + self.format_messages(messages)
             else:
                 messages = self.format_messages(messages)
 
-            # Calculate input token count
+            # 入力トークン数を計算
             input_tokens = self.count_message_tokens(messages)
 
-            # If there are tools, calculate token count for tool descriptions
+            # ツールがある場合、ツール説明のトークン数を計算
             tools_tokens = 0
             if tools:
                 for tool in tools:
@@ -374,19 +372,21 @@ class LLM:
 
             input_tokens += tools_tokens
 
-            # Check if token limits are exceeded
+            # トークン制限を超えていないかチェック
             if not self.check_token_limit(input_tokens):
                 error_message = self.get_limit_error_message(input_tokens)
-                # Raise a special exception that won't be retried
+                # 再試行されない特別な例外を発生
                 raise TokenLimitExceeded(error_message)
 
-            # Validate tools if provided
+            # ツールが提供された場合は検証
             if tools:
                 for tool in tools:
                     if not isinstance(tool, dict) or "type" not in tool:
-                        raise ValueError("Each tool must be a dict with 'type' field")
+                        raise ValueError(
+                            "各ツールは'type'フィールドを持つdictでなければなりません"
+                        )
 
-            # Set up the completion request
+            # 補完リクエストの設定
             params = {
                 "model": self.model,
                 "messages": messages,
@@ -406,31 +406,33 @@ class LLM:
 
             response = await self.client.chat.completions.create(**params)
 
-            # Check if response is valid
+            # 応答が有効か確認
             if not response.choices or not response.choices[0].message:
                 print(response)
-                raise ValueError("Invalid or empty response from LLM")
+                raise ValueError("LLMからの応答が無効または空です")
 
-            # Update token counts
+            # トークン数を更新
             self.update_token_count(response.usage.prompt_tokens)
 
             return response.choices[0].message
 
         except TokenLimitExceeded:
-            # Re-raise token limit errors without logging
+            # トークン制限エラーはログを記録せずに再発生
             raise
         except ValueError as ve:
-            logger.error(f"Validation error in ask_tool: {ve}")
+            logger.error(f"ask_toolでのバリデーションエラー: {ve}")
             raise
         except OpenAIError as oe:
-            logger.error(f"OpenAI API error: {oe}")
+            logger.error(f"OpenAI APIエラー: {oe}")
             if isinstance(oe, AuthenticationError):
-                logger.error("Authentication failed. Check API key.")
+                logger.error("認証に失敗しました。APIキーを確認してください。")
             elif isinstance(oe, RateLimitError):
-                logger.error("Rate limit exceeded. Consider increasing retry attempts.")
+                logger.error(
+                    "レート制限を超過しました。再試行回数の増加を検討してください。"
+                )
             elif isinstance(oe, APIError):
-                logger.error(f"API error: {oe}")
+                logger.error(f"APIエラー: {oe}")
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in ask_tool: {e}")
+            logger.error(f"ask_toolでの予期しないエラー: {e}")
             raise

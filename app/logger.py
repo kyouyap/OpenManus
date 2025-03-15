@@ -5,12 +5,11 @@ from loguru import logger as _logger
 
 from app.config import PROJECT_ROOT
 
-
 _print_level = "INFO"
 
 
 def define_log_level(print_level="INFO", logfile_level="DEBUG", name: str = None):
-    """Adjust the log level to above level"""
+    """ログレベルを指定されたレベルに調整します"""
     global _print_level
     _print_level = print_level
 
@@ -18,7 +17,7 @@ def define_log_level(print_level="INFO", logfile_level="DEBUG", name: str = None
     formatted_date = current_date.strftime("%Y%m%d%H%M%S")
     log_name = (
         f"{name}_{formatted_date}" if name else formatted_date
-    )  # name a log with prefix name
+    )  # 接頭辞付きのログ名を生成
 
     _logger.remove()
     _logger.add(sys.stderr, level=print_level)
@@ -28,15 +27,14 @@ def define_log_level(print_level="INFO", logfile_level="DEBUG", name: str = None
 
 logger = define_log_level()
 
-
 if __name__ == "__main__":
-    logger.info("Starting application")
-    logger.debug("Debug message")
-    logger.warning("Warning message")
-    logger.error("Error message")
-    logger.critical("Critical message")
+    logger.info("アプリケーションを開始しています")
+    logger.debug("デバッグメッセージ")
+    logger.warning("警告メッセージ")
+    logger.error("エラーメッセージ")
+    logger.critical("重大なメッセージ")
 
     try:
-        raise ValueError("Test error")
+        raise ValueError("テストエラー")
     except Exception as e:
-        logger.exception(f"An error occurred: {e}")
+        logger.exception(f"エラーが発生しました: {e}")

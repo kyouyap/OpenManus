@@ -1,22 +1,21 @@
 import multiprocessing
 import sys
 from io import StringIO
-from typing import Dict
 
 from app.tool.base import BaseTool
 
 
 class PythonExecute(BaseTool):
-    """A tool for executing Python code with timeout and safety restrictions."""
+    """タイムアウトと安全性制限付きでPythonコードを実行するツール。"""
 
     name: str = "python_execute"
-    description: str = "Executes Python code string. Note: Only print outputs are visible, function return values are not captured. Use print statements to see results."
+    description: str = "Pythonコードを実行します。注意: print出力のみが表示され、関数の戻り値は取得されません。結果を確認するにはprint文を使用してください。"
     parameters: dict = {
         "type": "object",
         "properties": {
             "code": {
                 "type": "string",
-                "description": "The Python code to execute.",
+                "description": "実行するPythonコード。",
             },
         },
         "required": ["code"],
@@ -40,18 +39,16 @@ class PythonExecute(BaseTool):
         self,
         code: str,
         timeout: int = 5,
-    ) -> Dict:
+    ) -> dict:
+        """指定されたPythonコードをタイムアウト付きで実行します。
+
+        引数:
+            code (str): 実行するPythonコード
+            timeout (int): 実行タイムアウト（秒）
+
+        戻り値:
+            Dict: 実行出力またはエラーメッセージを含む'output'と'success'ステータスを含む辞書
         """
-        Executes the provided Python code with a timeout.
-
-        Args:
-            code (str): The Python code to execute.
-            timeout (int): Execution timeout in seconds.
-
-        Returns:
-            Dict: Contains 'output' with execution output or error message and 'success' status.
-        """
-
         with multiprocessing.Manager() as manager:
             result = manager.dict({"observation": "", "success": False})
             if isinstance(__builtins__, dict):
@@ -69,7 +66,7 @@ class PythonExecute(BaseTool):
                 proc.terminate()
                 proc.join(1)
                 return {
-                    "observation": f"Execution timeout after {timeout} seconds",
+                    "observation": f"{timeout}秒後に実行がタイムアウトしました",
                     "success": False,
                 }
             return dict(result)

@@ -1,5 +1,5 @@
-SYSTEM_PROMPT = "You are an agent that can execute tool calls"
+SYSTEM_PROMPT = "あなたはツール呼び出しを実行できるエージェントです"
 
 NEXT_STEP_PROMPT = (
-    "If you want to stop interaction, use `terminate` tool/function call."
+    "対話を終了したい場合は、`terminate`ツール/関数呼び出しを使用してください。"
 )

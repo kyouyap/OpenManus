@@ -1,20 +1,18 @@
 # tool/planning.py
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from app.exceptions import ToolError
 from app.tool.base import BaseTool, ToolResult
 
-
 _PLANNING_TOOL_DESCRIPTION = """
-A planning tool that allows the agent to create and manage plans for solving complex tasks.
-The tool provides functionality for creating plans, updating plan steps, and tracking progress.
+複雑なタスクを解決するための計画を作成・管理できるプランニングツールです。
+計画の作成、ステップの更新、進捗の追跡などの機能を提供します。
 """
 
 
 class PlanningTool(BaseTool):
-    """
-    A planning tool that allows the agent to create and manage plans for solving complex tasks.
-    The tool provides functionality for creating plans, updating plan steps, and tracking progress.
+    """複雑なタスクを解決するための計画を作成・管理できるプランニングツールです。
+    計画の作成、ステップの更新、進捗の追跡などの機能を提供します。
     """
 
     name: str = "planning"
@@ -23,7 +21,7 @@ class PlanningTool(BaseTool):
         "type": "object",
         "properties": {
             "command": {
-                "description": "The command to execute. Available commands: create, update, list, get, set_active, mark_step, delete.",
+                "description": "実行するコマンド。利用可能なコマンド: create（作成）, update（更新）, list（一覧）, get（取得）, set_active（アクティブ設定）, mark_step（ステップ更新）, delete（削除）",
                 "enum": [
                     "create",
                     "update",
@@ -36,29 +34,29 @@ class PlanningTool(BaseTool):
                 "type": "string",
             },
             "plan_id": {
-                "description": "Unique identifier for the plan. Required for create, update, set_active, and delete commands. Optional for get and mark_step (uses active plan if not specified).",
+                "description": "計画の一意の識別子。create, update, set_active, deleteコマンドで必須。getとmark_stepでは省略可能（省略時はアクティブな計画を使用）。",
                 "type": "string",
             },
             "title": {
-                "description": "Title for the plan. Required for create command, optional for update command.",
+                "description": "計画のタイトル。createコマンドで必須、updateコマンドでは省略可能。",
                 "type": "string",
             },
             "steps": {
-                "description": "List of plan steps. Required for create command, optional for update command.",
+                "description": "計画のステップリスト。createコマンドで必須、updateコマンドでは省略可能。",
                 "type": "array",
                 "items": {"type": "string"},
             },
             "step_index": {
-                "description": "Index of the step to update (0-based). Required for mark_step command.",
+                "description": "更新するステップのインデックス（0から開始）。mark_stepコマンドで必須。",
                 "type": "integer",
             },
             "step_status": {
-                "description": "Status to set for a step. Used with mark_step command.",
+                "description": "ステップに設定するステータス。mark_stepコマンドで使用。",
                 "enum": ["not_started", "in_progress", "completed", "blocked"],
                 "type": "string",
             },
             "step_notes": {
-                "description": "Additional notes for a step. Optional for mark_step command.",
+                "description": "ステップの追加メモ。mark_stepコマンドでは省略可能。",
                 "type": "string",
             },
         },
@@ -67,7 +65,7 @@ class PlanningTool(BaseTool):
     }
 
     plans: dict = {}  # Dictionary to store plans by plan_id
-    _current_plan_id: Optional[str] = None  # Track the current active plan
+    _current_plan_id: str | None = None  # Track the current active plan
 
     async def execute(
         self,
@@ -75,62 +73,58 @@ class PlanningTool(BaseTool):
         command: Literal[
             "create", "update", "list", "get", "set_active", "mark_step", "delete"
         ],
-        plan_id: Optional[str] = None,
-        title: Optional[str] = None,
-        steps: Optional[List[str]] = None,
-        step_index: Optional[int] = None,
-        step_status: Optional[
-            Literal["not_started", "in_progress", "completed", "blocked"]
-        ] = None,
-        step_notes: Optional[str] = None,
+        plan_id: str | None = None,
+        title: str | None = None,
+        steps: list[str] | None = None,
+        step_index: int | None = None,
+        step_status: Literal["not_started", "in_progress", "completed", "blocked"]
+        | None = None,
+        step_notes: str | None = None,
         **kwargs,
     ):
-        """
-        Execute the planning tool with the given command and parameters.
+        """指定されたコマンドとパラメータでプランニングツールを実行します。
 
-        Parameters:
-        - command: The operation to perform
-        - plan_id: Unique identifier for the plan
-        - title: Title for the plan (used with create command)
-        - steps: List of steps for the plan (used with create command)
-        - step_index: Index of the step to update (used with mark_step command)
-        - step_status: Status to set for a step (used with mark_step command)
-        - step_notes: Additional notes for a step (used with mark_step command)
+        パラメータ:
+        - command: 実行する操作
+        - plan_id: 計画の一意の識別子
+        - title: 計画のタイトル（createコマンドで使用）
+        - steps: 計画のステップリスト（createコマンドで使用）
+        - step_index: 更新するステップのインデックス（mark_stepコマンドで使用）
+        - step_status: ステップに設定するステータス（mark_stepコマンドで使用）
+        - step_notes: ステップの追加メモ（mark_stepコマンドで使用）
         """
-
         if command == "create":
             return self._create_plan(plan_id, title, steps)
-        elif command == "update":
+        if command == "update":
             return self._update_plan(plan_id, title, steps)
-        elif command == "list":
+        if command == "list":
             return self._list_plans()
-        elif command == "get":
+        if command == "get":
             return self._get_plan(plan_id)
-        elif command == "set_active":
+        if command == "set_active":
             return self._set_active_plan(plan_id)
-        elif command == "mark_step":
+        if command == "mark_step":
             return self._mark_step(plan_id, step_index, step_status, step_notes)
-        elif command == "delete":
+        if command == "delete":
             return self._delete_plan(plan_id)
-        else:
-            raise ToolError(
-                f"Unrecognized command: {command}. Allowed commands are: create, update, list, get, set_active, mark_step, delete"
-            )
+        raise ToolError(
+            f"認識できないコマンドです: {command}。使用可能なコマンド: create, update, list, get, set_active, mark_step, delete"
+        )
 
     def _create_plan(
-        self, plan_id: Optional[str], title: Optional[str], steps: Optional[List[str]]
+        self, plan_id: str | None, title: str | None, steps: list[str] | None
     ) -> ToolResult:
-        """Create a new plan with the given ID, title, and steps."""
+        """指定されたID、タイトル、ステップで新しい計画を作成します。"""
         if not plan_id:
-            raise ToolError("Parameter `plan_id` is required for command: create")
+            raise ToolError("createコマンドには`plan_id`パラメータが必要です")
 
         if plan_id in self.plans:
             raise ToolError(
-                f"A plan with ID '{plan_id}' already exists. Use 'update' to modify existing plans."
+                f"ID '{plan_id}' の計画は既に存在します。既存の計画を修正するにはupdateを使用してください。"
             )
 
         if not title:
-            raise ToolError("Parameter `title` is required for command: create")
+            raise ToolError("createコマンドには`title`パラメータが必要です")
 
         if (
             not steps
@@ -138,7 +132,7 @@ class PlanningTool(BaseTool):
             or not all(isinstance(step, str) for step in steps)
         ):
             raise ToolError(
-                "Parameter `steps` must be a non-empty list of strings for command: create"
+                "createコマンドの`steps`パラメータは空でない文字列のリストである必要があります"
             )
 
         # Create a new plan with initialized step statuses
@@ -154,18 +148,18 @@ class PlanningTool(BaseTool):
         self._current_plan_id = plan_id  # Set as active plan
 
         return ToolResult(
-            output=f"Plan created successfully with ID: {plan_id}\n\n{self._format_plan(plan)}"
+            output=f"ID: {plan_id} で計画を作成しました\n\n{self._format_plan(plan)}"
         )
 
     def _update_plan(
-        self, plan_id: Optional[str], title: Optional[str], steps: Optional[List[str]]
+        self, plan_id: str | None, title: str | None, steps: list[str] | None
     ) -> ToolResult:
-        """Update an existing plan with new title or steps."""
+        """既存の計画を新しいタイトルまたはステップで更新します。"""
         if not plan_id:
-            raise ToolError("Parameter `plan_id` is required for command: update")
+            raise ToolError("updateコマンドには`plan_id`パラメータが必要です")
 
         if plan_id not in self.plans:
-            raise ToolError(f"No plan found with ID: {plan_id}")
+            raise ToolError(f"ID: {plan_id} の計画が見つかりません")
 
         plan = self.plans[plan_id]
 
@@ -177,7 +171,7 @@ class PlanningTool(BaseTool):
                 isinstance(step, str) for step in steps
             ):
                 raise ToolError(
-                    "Parameter `steps` must be a list of strings for command: update"
+                    "updateコマンドの`steps`パラメータは文字列のリストである必要があります"
                 )
 
             # Preserve existing step statuses for unchanged steps
@@ -203,70 +197,70 @@ class PlanningTool(BaseTool):
             plan["step_notes"] = new_notes
 
         return ToolResult(
-            output=f"Plan updated successfully: {plan_id}\n\n{self._format_plan(plan)}"
+            output=f"計画を更新しました: {plan_id}\n\n{self._format_plan(plan)}"
         )
 
     def _list_plans(self) -> ToolResult:
-        """List all available plans."""
+        """利用可能な全ての計画を一覧表示します。"""
         if not self.plans:
             return ToolResult(
-                output="No plans available. Create a plan with the 'create' command."
+                output="計画が存在しません。createコマンドで計画を作成してください。"
             )
 
-        output = "Available plans:\n"
+        output = "利用可能な計画:\n"
         for plan_id, plan in self.plans.items():
-            current_marker = " (active)" if plan_id == self._current_plan_id else ""
+            current_marker = " (アクティブ)" if plan_id == self._current_plan_id else ""
             completed = sum(
                 1 for status in plan["step_statuses"] if status == "completed"
             )
             total = len(plan["steps"])
-            progress = f"{completed}/{total} steps completed"
+            progress = f"{completed}/{total} ステップ完了"
             output += f"• {plan_id}{current_marker}: {plan['title']} - {progress}\n"
 
         return ToolResult(output=output)
 
-    def _get_plan(self, plan_id: Optional[str]) -> ToolResult:
-        """Get details of a specific plan."""
+    def _get_plan(self, plan_id: str | None) -> ToolResult:
+        """特定の計画の詳細を取得します。"""
         if not plan_id:
             # If no plan_id is provided, use the current active plan
             if not self._current_plan_id:
                 raise ToolError(
-                    "No active plan. Please specify a plan_id or set an active plan."
+                    "アクティブな計画がありません。plan_idを指定するかアクティブな計画を設定してください。"
                 )
             plan_id = self._current_plan_id
 
         if plan_id not in self.plans:
-            raise ToolError(f"No plan found with ID: {plan_id}")
+            raise ToolError(f"ID: {plan_id} の計画が見つかりません")
 
         plan = self.plans[plan_id]
         return ToolResult(output=self._format_plan(plan))
 
-    def _set_active_plan(self, plan_id: Optional[str]) -> ToolResult:
-        """Set a plan as the active plan."""
+    def _set_active_plan(self, plan_id: str | None) -> ToolResult:
+        """計画をアクティブな計画として設定します。"""
         if not plan_id:
-            raise ToolError("Parameter `plan_id` is required for command: set_active")
+            raise ToolError("set_activeコマンドには`plan_id`パラメータが必要です")
 
         if plan_id not in self.plans:
             raise ToolError(f"No plan found with ID: {plan_id}")
 
         self._current_plan_id = plan_id
         return ToolResult(
-            output=f"Plan '{plan_id}' is now the active plan.\n\n{self._format_plan(self.plans[plan_id])}"
+            output=f"'{plan_id}' をアクティブな計画に設定しました。\n\n{self._format_plan(self.plans[plan_id])}"
         )
 
     def _mark_step(
         self,
-        plan_id: Optional[str],
-        step_index: Optional[int],
-        step_status: Optional[str],
-        step_notes: Optional[str],
+        plan_id: str | None,
+        step_index: int | None,
+        step_status: str | None,
+        step_notes: str | None,
     ) -> ToolResult:
-        """Mark a step with a specific status and optional notes."""
+        """ステップを特定のステータスと任意のメモで更新します。"""
         if not plan_id:
             # If no plan_id is provided, use the current active plan
             if not self._current_plan_id:
                 raise ToolError(
-                    "No active plan. Please specify a plan_id or set an active plan."
+                    "アクティブな計画がありません。plan_idを指定するかアクティブな計画を設定してください。"
                 )
             plan_id = self._current_plan_id
 
@@ -274,13 +268,13 @@ class PlanningTool(BaseTool):
             raise ToolError(f"No plan found with ID: {plan_id}")
 
         if step_index is None:
-            raise ToolError("Parameter `step_index` is required for command: mark_step")
+            raise ToolError("mark_stepコマンドには`step_index`パラメータが必要です")
 
         plan = self.plans[plan_id]
 
         if step_index < 0 or step_index >= len(plan["steps"]):
             raise ToolError(
-                f"Invalid step_index: {step_index}. Valid indices range from 0 to {len(plan['steps'])-1}."
+                f"無効なstep_index: {step_index}。有効な範囲は0から{len(plan['steps']) - 1}です。"
             )
 
         if step_status and step_status not in [
@@ -290,7 +284,7 @@ class PlanningTool(BaseTool):
             "blocked",
         ]:
             raise ToolError(
-                f"Invalid step_status: {step_status}. Valid statuses are: not_started, in_progress, completed, blocked"
+                f"無効なstep_status: {step_status}。有効なステータス: not_started, in_progress, completed, blocked"
             )
 
         if step_status:
@@ -300,16 +294,16 @@ class PlanningTool(BaseTool):
             plan["step_notes"][step_index] = step_notes
 
         return ToolResult(
-            output=f"Step {step_index} updated in plan '{plan_id}'.\n\n{self._format_plan(plan)}"
+            output=f"計画 '{plan_id}' のステップ {step_index} を更新しました。\n\n{self._format_plan(plan)}"
         )
 
-    def _delete_plan(self, plan_id: Optional[str]) -> ToolResult:
-        """Delete a plan."""
+    def _delete_plan(self, plan_id: str | None) -> ToolResult:
+        """計画を削除します。"""
         if not plan_id:
-            raise ToolError("Parameter `plan_id` is required for command: delete")
+            raise ToolError("deleteコマンドには`plan_id`パラメータが必要です")
 
         if plan_id not in self.plans:
-            raise ToolError(f"No plan found with ID: {plan_id}")
+            raise ToolError(f"ID: {plan_id} の計画が見つかりません")
 
         del self.plans[plan_id]
 
@@ -317,11 +311,11 @@ class PlanningTool(BaseTool):
         if self._current_plan_id == plan_id:
             self._current_plan_id = None
 
-        return ToolResult(output=f"Plan '{plan_id}' has been deleted.")
+        return ToolResult(output=f"計画 '{plan_id}' を削除しました。")
 
-    def _format_plan(self, plan: Dict) -> str:
-        """Format a plan for display."""
-        output = f"Plan: {plan['title']} (ID: {plan['plan_id']})\n"
+    def _format_plan(self, plan: dict) -> str:
+        """計画を表示用にフォーマットします。"""
+        output = f"計画: {plan['title']} (ID: {plan['plan_id']})\n"
         output += "=" * len(output) + "\n\n"
 
         # Calculate progress statistics
@@ -335,19 +329,19 @@ class PlanningTool(BaseTool):
             1 for status in plan["step_statuses"] if status == "not_started"
         )
 
-        output += f"Progress: {completed}/{total_steps} steps completed "
+        output += f"進捗状況: {completed}/{total_steps} ステップ完了 "
         if total_steps > 0:
             percentage = (completed / total_steps) * 100
             output += f"({percentage:.1f}%)\n"
         else:
             output += "(0%)\n"
 
-        output += f"Status: {completed} completed, {in_progress} in progress, {blocked} blocked, {not_started} not started\n\n"
-        output += "Steps:\n"
+        output += f"状態: {completed} 完了, {in_progress} 進行中, {blocked} ブロック中, {not_started} 未着手\n\n"
+        output += "ステップ:\n"
 
         # Add each step with its status and notes
         for i, (step, status, notes) in enumerate(
-            zip(plan["steps"], plan["step_statuses"], plan["step_notes"])
+            zip(plan["steps"], plan["step_statuses"], plan["step_notes"], strict=False)
         ):
             status_symbol = {
                 "not_started": "[ ]",
@@ -358,6 +352,6 @@ class PlanningTool(BaseTool):
 
             output += f"{i}. {status_symbol} {step}\n"
             if notes:
-                output += f"   Notes: {notes}\n"
+                output += f"   メモ: {notes}\n"
 
         return output

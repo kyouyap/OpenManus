@@ -1,11 +1,11 @@
 from enum import Enum
-from typing import Any, List, Literal, Optional, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 class Role(str, Enum):
-    """Message role options"""
+    """メッセージのロールオプション"""
 
     SYSTEM = "system"
     USER = "user"
@@ -18,7 +18,7 @@ ROLE_TYPE = Literal[ROLE_VALUES]  # type: ignore
 
 
 class ToolChoice(str, Enum):
-    """Tool choice options"""
+    """ツール選択オプション"""
 
     NONE = "none"
     AUTO = "auto"
@@ -30,12 +30,12 @@ TOOL_CHOICE_TYPE = Literal[TOOL_CHOICE_VALUES]  # type: ignore
 
 
 class AgentState(str, Enum):
-    """Agent execution states"""
+    """エージェントの実行状態"""
 
-    IDLE = "IDLE"
-    RUNNING = "RUNNING"
-    FINISHED = "FINISHED"
-    ERROR = "ERROR"
+    IDLE = "IDLE"  # アイドル状態
+    RUNNING = "RUNNING"  # 実行中
+    FINISHED = "FINISHED"  # 完了
+    ERROR = "ERROR"  # エラー
 
 
 class Function(BaseModel):
@@ -44,7 +44,7 @@ class Function(BaseModel):
 
 
 class ToolCall(BaseModel):
-    """Represents a tool/function call in a message"""
+    """メッセージ内のツール/関数呼び出しを表現します"""
 
     id: str
     type: str = "function"
@@ -52,36 +52,34 @@ class ToolCall(BaseModel):
 
 
 class Message(BaseModel):
-    """Represents a chat message in the conversation"""
+    """会話内のチャットメッセージを表現します"""
 
     role: ROLE_TYPE = Field(...)  # type: ignore
-    content: Optional[str] = Field(default=None)
-    tool_calls: Optional[List[ToolCall]] = Field(default=None)
-    name: Optional[str] = Field(default=None)
-    tool_call_id: Optional[str] = Field(default=None)
+    content: str | None = Field(default=None)
+    tool_calls: list[ToolCall] | None = Field(default=None)
+    name: str | None = Field(default=None)
+    tool_call_id: str | None = Field(default=None)
 
-    def __add__(self, other) -> List["Message"]:
-        """支持 Message + list 或 Message + Message 的操作"""
+    def __add__(self, other) -> list["Message"]:
+        """Message + list または Message + Message の操作をサポートします"""
         if isinstance(other, list):
             return [self] + other
-        elif isinstance(other, Message):
+        if isinstance(other, Message):
             return [self, other]
-        else:
-            raise TypeError(
-                f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'"
-            )
+        raise TypeError(
+            f"サポートされていない演算子の型: '{type(self).__name__}' と '{type(other).__name__}'"
+        )
 
-    def __radd__(self, other) -> List["Message"]:
-        """支持 list + Message 的操作"""
+    def __radd__(self, other) -> list["Message"]:
+        """List + Message の操作をサポートします"""
         if isinstance(other, list):
             return other + [self]
-        else:
-            raise TypeError(
-                f"unsupported operand type(s) for +: '{type(other).__name__}' and '{type(self).__name__}'"
-            )
+        raise TypeError(
+            f"サポートされていない演算子の型: '{type(other).__name__}' と '{type(self).__name__}'"
+        )
 
     def to_dict(self) -> dict:
-        """Convert message to dictionary format"""
+        """メッセージを辞書形式に変換します"""
         message = {"role": self.role}
         if self.content is not None:
             message["content"] = self.content
@@ -95,35 +93,35 @@ class Message(BaseModel):
 
     @classmethod
     def user_message(cls, content: str) -> "Message":
-        """Create a user message"""
+        """ユーザーメッセージを作成します"""
         return cls(role=Role.USER, content=content)
 
     @classmethod
     def system_message(cls, content: str) -> "Message":
-        """Create a system message"""
+        """システムメッセージを作成します"""
         return cls(role=Role.SYSTEM, content=content)
 
     @classmethod
-    def assistant_message(cls, content: Optional[str] = None) -> "Message":
-        """Create an assistant message"""
+    def assistant_message(cls, content: str | None = None) -> "Message":
+        """アシスタントメッセージを作成します"""
         return cls(role=Role.ASSISTANT, content=content)
 
     @classmethod
     def tool_message(cls, content: str, name, tool_call_id: str) -> "Message":
-        """Create a tool message"""
+        """ツールメッセージを作成します"""
         return cls(
             role=Role.TOOL, content=content, name=name, tool_call_id=tool_call_id
         )
 
     @classmethod
     def from_tool_calls(
-        cls, tool_calls: List[Any], content: Union[str, List[str]] = "", **kwargs
+        cls, tool_calls: list[Any], content: str | list[str] = "", **kwargs
     ):
-        """Create ToolCallsMessage from raw tool calls.
+        """生のツール呼び出しからToolCallsMessageを作成します。
 
-        Args:
-            tool_calls: Raw tool calls from LLM
-            content: Optional message content
+        引数:
+            tool_calls: LLMからの生のツール呼び出し
+            content: オプションのメッセージ内容
         """
         formatted_calls = [
             {"id": call.id, "function": call.function.model_dump(), "type": "function"}
@@ -135,28 +133,28 @@ class Message(BaseModel):
 
 
 class Memory(BaseModel):
-    messages: List[Message] = Field(default_factory=list)
+    messages: list[Message] = Field(default_factory=list)
     max_messages: int = Field(default=100)
 
     def add_message(self, message: Message) -> None:
-        """Add a message to memory"""
+        """メッセージをメモリに追加します"""
         self.messages.append(message)
-        # Optional: Implement message limit
+        # オプション: メッセージ制限を実装
         if len(self.messages) > self.max_messages:
             self.messages = self.messages[-self.max_messages :]
 
-    def add_messages(self, messages: List[Message]) -> None:
-        """Add multiple messages to memory"""
+    def add_messages(self, messages: list[Message]) -> None:
+        """複数のメッセージをメモリに追加します"""
         self.messages.extend(messages)
 
     def clear(self) -> None:
-        """Clear all messages"""
+        """全てのメッセージをクリアします"""
         self.messages.clear()
 
-    def get_recent_messages(self, n: int) -> List[Message]:
-        """Get n most recent messages"""
+    def get_recent_messages(self, n: int) -> list[Message]:
+        """最新のn件のメッセージを取得します"""
         return self.messages[-n:]
 
-    def to_dict_list(self) -> List[dict]:
-        """Convert messages to list of dicts"""
+    def to_dict_list(self) -> list[dict]:
+        """メッセージを辞書のリストに変換します"""
         return [msg.to_dict() for msg in self.messages]

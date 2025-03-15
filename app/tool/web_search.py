@@ -11,6 +11,7 @@ from app.tool.search import (
     WebSearchEngine,
 )
 
+
 class WebSearch(BaseTool):
     name: str = "web_search"
     description: str = """Perform a web search and return a list of relevant links. 
@@ -52,13 +53,15 @@ class WebSearch(BaseTool):
         for engine_name in engine_order:
             engine = self._search_engine[engine_name]
             try:
-                links = await self._perform_search_with_engine(engine, query, num_results)
+                links = await self._perform_search_with_engine(
+                    engine, query, num_results
+                )
                 if links:
                     return links
             except Exception as e:
                 print(f"Search engine '{engine_name}' failed with error: {e}")
         return []
-    
+
     def _get_engine_order(self) -> List[str]:
         """
         Determines the order in which to try search engines.
@@ -78,15 +81,15 @@ class WebSearch(BaseTool):
             if key not in engine_order:
                 engine_order.append(key)
         return engine_order
-    
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
     )
     async def _perform_search_with_engine(
-        self, 
-        engine: WebSearchEngine, 
-        query: str, 
+        self,
+        engine: WebSearchEngine,
+        query: str,
         num_results: int,
     ) -> List[str]:
         loop = asyncio.get_event_loop()
