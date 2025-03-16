@@ -8,42 +8,43 @@ from app.logger import logger
 
 
 async def run_flow():
+    """フローを実行するメイン関数"""
     agents = {
         "manus": Manus(),
     }
 
     try:
-        prompt = input("Enter your prompt: ")
+        prompt = input("プロンプトを入力してください: ")
 
         if prompt.strip().isspace() or not prompt:
-            logger.warning("Empty prompt provided.")
+            logger.warning("空のプロンプトが入力されました。")
             return
 
         flow = FlowFactory.create_flow(
             flow_type=FlowType.PLANNING,
             agents=agents,
         )
-        logger.warning("Processing your request...")
+        logger.warning("リクエストを処理中...")
 
         try:
             start_time = time.time()
             result = await asyncio.wait_for(
                 flow.execute(prompt),
-                timeout=3600,  # 60 minute timeout for the entire execution
+                timeout=3600,  # 実行全体のタイムアウトを60分に設定
             )
             elapsed_time = time.time() - start_time
-            logger.info(f"Request processed in {elapsed_time:.2f} seconds")
+            logger.info(f"リクエストの処理が {elapsed_time:.2f} 秒で完了しました")
             logger.info(result)
-        except asyncio.TimeoutError:
-            logger.error("Request processing timed out after 1 hour")
+        except TimeoutError:
+            logger.error("リクエストの処理が1時間でタイムアウトしました")
             logger.info(
-                "Operation terminated due to timeout. Please try a simpler request."
+                "タイムアウトにより処理が終了しました。より簡単なリクエストを試してください。"
             )
 
     except KeyboardInterrupt:
-        logger.info("Operation cancelled by user.")
+        logger.info("ユーザーによって処理がキャンセルされました。")
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        logger.error(f"エラー: {e!s}")
 
 
 if __name__ == "__main__":

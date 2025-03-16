@@ -1,12 +1,36 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from typing import Any, Protocol, TypeVar, overload
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.llm import LLM
 from app.logger import logger
-from app.schema import ROLE_TYPE, AgentState, Memory, Message
+from app.schema import ROLE_TYPE, AgentState, Memory, Message, Role
+
+T = TypeVar("T")
+
+
+class BasicMessageFactory(Protocol):
+    """基本的なメッセージファクトリー関数の型プロトコル"""
+
+    def __call__(self, content: str) -> Message: ...
+
+
+@overload
+def ensure_message_factory(func: Callable[[str], Message]) -> BasicMessageFactory: ...
+
+
+@overload
+def ensure_message_factory(
+    func: Callable[[str, str, str], Message],
+) -> Callable[[str, str, str], Message]: ...
+
+
+def ensure_message_factory(func: Any) -> Any:
+    """関数をMessageFactoryとして扱えるようにラップします"""
+    return func
 
 
 class BaseAgent(BaseModel, ABC):
@@ -29,7 +53,7 @@ class BaseAgent(BaseModel, ABC):
     )
 
     # 依存関係
-    llm: LLM = Field(default_factory=LLM, description="言語モデルのインスタンス")
+    llm: LLM | None = Field(None, description="言語モデルのインスタンス")
     memory: Memory = Field(
         default_factory=Memory, description="エージェントのメモリストア"
     )
@@ -52,7 +76,7 @@ class BaseAgent(BaseModel, ABC):
     @model_validator(mode="after")
     def initialize_agent(self) -> "BaseAgent":
         """提供されていない場合、デフォルト設定でエージェントを初期化します。"""
-        if self.llm is None or not isinstance(self.llm, LLM):
+        if self.llm is None:
             self.llm = LLM(config_name=self.name.lower())
         if not isinstance(self.memory, Memory):
             self.memory = Memory()
@@ -90,7 +114,7 @@ class BaseAgent(BaseModel, ABC):
         self,
         role: ROLE_TYPE,  # type: ignore
         content: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """エージェントのメモリにメッセージを追加します。
 
@@ -103,18 +127,27 @@ class BaseAgent(BaseModel, ABC):
             ValueError: roleが未対応の場合。
 
         """
-        message_map = {
-            "user": Message.user_message,
-            "system": Message.system_message,
-            "assistant": Message.assistant_message,
-            "tool": lambda content, **kw: Message.tool_message(content, **kw),
+        message_factories = {
+            Role.USER.value: ensure_message_factory(Message.user_message),
+            Role.SYSTEM.value: ensure_message_factory(Message.system_message),
+            Role.ASSISTANT.value: ensure_message_factory(Message.assistant_message),
         }
 
-        if role not in message_map:
+        if role not in message_factories and role != Role.TOOL.value:
             raise ValueError(f"Unsupported message role: {role}")
 
-        msg_factory = message_map[role]
-        msg = msg_factory(content, **kwargs) if role == "tool" else msg_factory(content)
+        if role == Role.TOOL.value:
+            if "name" not in kwargs or "tool_call_id" not in kwargs:
+                raise ValueError("Tool messages require 'name' and 'tool_call_id'")
+            msg = Message.tool_message(
+                content=content,
+                name=kwargs["name"],
+                tool_call_id=kwargs["tool_call_id"],
+            )
+        else:
+            msg_factory = message_factories[role]
+            msg = msg_factory(content)
+
         self.memory.add_message(msg)
 
     async def run(self, request: str | None = None) -> str:
@@ -134,7 +167,7 @@ class BaseAgent(BaseModel, ABC):
             raise RuntimeError(f"Cannot run agent from state: {self.state}")
 
         if request:
-            self.update_memory("user", request)
+            self.update_memory(Role.USER.value, request)
 
         results: list[str] = []
         async with self.state_context(AgentState.RUNNING):
@@ -147,7 +180,7 @@ class BaseAgent(BaseModel, ABC):
 
                 # Check for stuck state
                 if self.is_stuck():
-                    self.handle_stuck_state()
+                    self._handle_stuck_state()
 
                 results.append(f"Step {self.current_step}: {step_result}")
 
@@ -163,14 +196,24 @@ class BaseAgent(BaseModel, ABC):
         """エージェントのワークフローで単一ステップを実行します。
 
         サブクラスで具体的な動作を定義するために実装する必要があります。
-        """
 
-    def handle_stuck_state(self):
+        Returns:
+            str: ステップの実行結果を示す文字列
+
+        """
+        raise NotImplementedError
+
+    def _handle_stuck_state(self) -> None:
         """戦略を変更するプロンプトを追加してスタック状態を処理します"""
-        stuck_prompt = "\
-        Observed duplicate responses. Consider new strategies and avoid repeating ineffective paths already attempted."
-        self.next_step_prompt = f"{stuck_prompt}\n{self.next_step_prompt}"
-        logger.warning(f"Agent detected stuck state. Added prompt: {stuck_prompt}")
+        stuck_prompt = (
+            "重複した応答が検出されました。新しい戦略を検討し、"
+            "すでに試みて効果のなかった方法の繰り返しを避けてください。"
+        )
+        if self.next_step_prompt:
+            self.next_step_prompt = f"{stuck_prompt}\n{self.next_step_prompt}"
+        logger.warning(
+            f"エージェントがスタック状態を検出しました。プロンプトを追加: {stuck_prompt}"
+        )
 
     def is_stuck(self) -> bool:
         """重複コンテンツを検出してエージェントがループでスタックしているかを確認します"""
@@ -185,7 +228,7 @@ class BaseAgent(BaseModel, ABC):
         duplicate_count = sum(
             1
             for msg in reversed(self.memory.messages[:-1])
-            if msg.role == "assistant" and msg.content == last_message.content
+            if msg.role == Role.ASSISTANT.value and msg.content == last_message.content
         )
 
         return duplicate_count >= self.duplicate_threshold
@@ -196,6 +239,6 @@ class BaseAgent(BaseModel, ABC):
         return self.memory.messages
 
     @messages.setter
-    def messages(self, value: list[Message]):
+    def messages(self, value: list[Message]) -> None:
         """エージェントのメモリにメッセージのリストを設定します。"""
         self.memory.messages = value

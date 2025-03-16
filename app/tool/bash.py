@@ -1,13 +1,18 @@
 import asyncio
 import os
+from typing import Any, cast
 
 from app.exceptions import ToolError
 from app.tool.base import BaseTool, CLIResult, ToolResult
 
 _BASH_DESCRIPTION = """ターミナルでbashコマンドを実行します。
-* 長時間実行コマンド: 無期限に実行される可能性のあるコマンドは、バックグラウンドで実行し、出力をファイルにリダイレクトする必要があります。例: command = `python3 app.py > server.log 2>&1 &`
-* 対話型コマンド: bashコマンドが終了コード`-1`を返した場合、プロセスはまだ終了していないことを意味します。アシスタントは空の`command`でターミナルに2回目の呼び出しを送信して追加のログを取得するか、テキストを送信（`command`にテキストを設定）してSTDINに送信するか、command=`ctrl+c`を送信してプロセスを中断できます。
-* タイムアウト: コマンド実行結果が"Command timed out. Sending SIGINT to the process"となった場合、アシスタントはコマンドをバックグラウンドで再実行する必要があります。
+* 長時間実行コマンド: 無期限に実行される可能性のあるコマンドは、バックグラウンドで実行し、
+  出力をファイルにリダイレクトする必要があります。例: command = `python3 app.py > server.log 2>&1 &`
+* 対話型コマンド: bashコマンドが終了コード`-1`を返した場合、プロセスはまだ終了していないことを意味します。
+  アシスタントは空の`command`でターミナルに2回目の呼び出しを送信して追加のログを取得するか、
+  テキストを送信(`command`にテキストを設定)してSTDINに送信するか、command=`ctrl+c`を送信してプロセスを中断できます。
+* タイムアウト: コマンド実行結果が"Command timed out. Sending SIGINT to the process"となった場合、
+  アシスタントはコマンドをバックグラウンドで再実行する必要があります。
 """
 
 
@@ -80,9 +85,16 @@ class _BashSession:
             async with asyncio.timeout(self._timeout):
                 while True:
                     await asyncio.sleep(self._output_delay)
-                    # if we read directly from stdout/stderr, it will wait forever for
-                    # EOF. use the StreamReader buffer directly instead.
-                    output = self._process.stdout._buffer.decode()  # pyright: ignore[reportAttributeAccessIssue]
+                    # Read available output without waiting for EOF
+                    output = ""
+                    while True:
+                        try:
+                            chunk = await self._process.stdout.read(1024)
+                            if not chunk:
+                                break
+                            output += chunk.decode()
+                        except Exception:
+                            break
                     if self._sentinel in output:
                         # strip the sentinel and break
                         output = output[: output.index(self._sentinel)]
@@ -95,12 +107,17 @@ class _BashSession:
 
         output = output.removesuffix("\n")
 
-        error = self._process.stderr._buffer.decode()  # pyright: ignore[reportAttributeAccessIssue]
+        # Read error output
+        error = ""
+        while True:
+            try:
+                chunk = await self._process.stderr.read(1024)
+                if not chunk:
+                    break
+                error += chunk.decode()
+            except Exception:
+                break
         error = error.removesuffix("\n")
-
-        # clear the buffers so that the next output can be read correctly
-        self._process.stdout._buffer.clear()  # pyright: ignore[reportAttributeAccessIssue]
-        self._process.stderr._buffer.clear()  # pyright: ignore[reportAttributeAccessIssue]
 
         return CLIResult(output=output, error=error)
 
@@ -110,7 +127,7 @@ class Bash(BaseTool):
 
     name: str = "bash"
     description: str = _BASH_DESCRIPTION
-    parameters: dict = {
+    parameters: dict | None = {
         "type": "object",
         "properties": {
             "command": {
@@ -123,16 +140,16 @@ class Bash(BaseTool):
 
     _session: _BashSession | None = None
 
-    async def execute(
-        self, command: str | None = None, restart: bool = False, **kwargs
-    ) -> CLIResult:
+    async def execute(self, **kwargs: Any) -> CLIResult:
+        restart = kwargs.get("restart", False)
+        command = kwargs.get("command")
+
         if restart:
             if self._session:
                 self._session.stop()
             self._session = _BashSession()
             await self._session.start()
-
-            return ToolResult(system="tool has been restarted.")
+            return cast("CLIResult", ToolResult(system="tool has been restarted."))
 
         if self._session is None:
             self._session = _BashSession()
@@ -145,6 +162,12 @@ class Bash(BaseTool):
 
 
 if __name__ == "__main__":
-    bash = Bash()
-    rst = asyncio.run(bash.execute("ls -l"))
-    print(rst)
+    import sys
+
+    async def main() -> None:
+        bash = Bash()
+        result = await bash.execute(command="ls -l")
+        print(result)
+        sys.exit(0)
+
+    asyncio.run(main())

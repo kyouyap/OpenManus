@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +9,7 @@ class BaseTool(ABC, BaseModel):
 
     name: str
     description: str
-    parameters: ClassVar[dict | None] = None
+    parameters: dict | None = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -48,9 +48,7 @@ class ToolResult(BaseModel):
         return any(getattr(self, field) for field in self.__fields__)
 
     def __add__(self, other: "ToolResult"):
-        def combine_fields(
-            field: str | None, other_field: str | None, concatenate: bool = True
-        ):
+        def combine_fields(field: str | None, other_field: str | None, concatenate: bool = True):
             if field and other_field:
                 if concatenate:
                     return field + other_field
@@ -82,4 +80,4 @@ class ToolFailure(ToolResult):
 class AgentAwareTool:
     """エージェントを認識するツール。"""
 
-    agent: Optional = None
+    agent: Any | None = None
